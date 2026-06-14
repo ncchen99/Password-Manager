@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// 零知識架構：伺服器只存密文與非敏感欄位。
+// 規則僅保證「使用者只能存取自己 uid 底下的資料」與欄位白名單。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      // meta 文件：kdfParams / wrappedVK_byMEK / wrappedVK_byRK / vaultRev
+      allow read: if signedInAs(uid);
+      allow write: if signedInAs(uid)
+        && request.resource.data.keys().hasOnly(
+             ['kdfParams', 'wrappedVK_byMEK', 'wrappedVK_byRK', 'vaultRev', 'updatedAt']);
+
+      match /entries/{entryId} {
+        allow read, delete: if signedInAs(uid);
+        allow create, update: if signedInAs(uid)
+          && request.resource.data.keys().hasOnly(
+               ['ciphertext', 'iv', 'rev', 'updatedAt', 'conflictOf'])
+          && request.resource.data.ciphertext is string
+          && request.resource.data.iv is string;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
