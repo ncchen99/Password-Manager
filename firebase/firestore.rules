@@ -14,15 +14,35 @@ service cloud.firestore {
       allow read: if signedInAs(uid);
       allow write: if signedInAs(uid)
         && request.resource.data.keys().hasOnly(
-             ['kdfParams', 'wrappedVK_byMEK', 'wrappedVK_byRK', 'vaultRev', 'updatedAt']);
+             ['kdfParams', 'wrappedVK_byMEK', 'wrappedVK_byRK', 'vaultRev', 'updatedAt'])
+        && request.resource.data.keys().hasAll(
+             ['kdfParams', 'wrappedVK_byRK', 'vaultRev', 'updatedAt'])
+        && request.resource.data.kdfParams is map
+        && request.resource.data.wrappedVK_byRK is map
+        && request.resource.data.vaultRev is int
+        && request.resource.data.vaultRev >= 0
+        && request.resource.data.updatedAt is int
+        // #6 vaultRev 單調不遞減：禁止把金鑰包裝回滾到舊版本（DoS / 弱密碼替換）。
+        && (resource == null
+            || request.resource.data.vaultRev >= resource.data.vaultRev);
 
       match /entries/{entryId} {
         allow read, delete: if signedInAs(uid);
+        // #5 欄位型別/長度驗證：杜絕負數 rev、非字串密文、超大 payload 耗盡儲存。
         allow create, update: if signedInAs(uid)
           && request.resource.data.keys().hasOnly(
                ['ciphertext', 'iv', 'rev', 'updatedAt', 'conflictOf', 'deleted'])
           && request.resource.data.ciphertext is string
-          && request.resource.data.iv is string;
+          && request.resource.data.ciphertext.size() < 1048576
+          && request.resource.data.iv is string
+          && request.resource.data.iv.size() < 100
+          && request.resource.data.rev is int
+          && request.resource.data.rev > 0
+          && request.resource.data.updatedAt is int
+          && (!('conflictOf' in request.resource.data)
+              || request.resource.data.conflictOf is string)
+          && (!('deleted' in request.resource.data)
+              || request.resource.data.deleted is bool);
       }
     }
 

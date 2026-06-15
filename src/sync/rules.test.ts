@@ -51,6 +51,18 @@ describe.skipIf(!RUN)('firestore.rules — 零知識存取邊界', () => {
     );
   });
 
+  it('允許免密碼金庫的 meta（省略 wrappedVK_byMEK）', async () => {
+    const db = testEnv.authenticatedContext('alice').firestore();
+    await assertSucceeds(
+      db.doc('users/alice').set({
+        kdfParams: { algo: 'argon2id', salt: 'x' },
+        wrappedVK_byRK: { ct: 'a', iv: 'b' },
+        vaultRev: 1,
+        updatedAt: 1,
+      }),
+    );
+  });
+
   it('拒絕讀取他人 uid 的資料', async () => {
     const db = testEnv.authenticatedContext('alice').firestore();
     await assertFails(db.doc('users/bob').get());
@@ -85,5 +97,67 @@ describe.skipIf(!RUN)('firestore.rules — 零知識存取邊界', () => {
   it('未登入一律拒絕', async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(db.doc('users/alice').get());
+  });
+
+  // ---- #5 欄位型別 / 長度驗證 ----
+
+  it('拒絕超大 ciphertext（儲存耗盡）', async () => {
+    const db = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      db.doc('users/alice/entries/big').set({
+        ciphertext: 'x'.repeat(1_048_576), // >= 1 MiB
+        iv: 'i',
+        rev: 1,
+        updatedAt: 1,
+      }),
+    );
+  });
+
+  it('拒絕非正整數 rev', async () => {
+    const db = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      db.doc('users/alice/entries/r0').set({
+        ciphertext: 'c',
+        iv: 'i',
+        rev: 0,
+        updatedAt: 1,
+      }),
+    );
+    await assertFails(
+      db.doc('users/alice/entries/rneg').set({
+        ciphertext: 'c',
+        iv: 'i',
+        rev: -5,
+        updatedAt: 1,
+      }),
+    );
+  });
+
+  it('拒絕缺少必要欄位的 meta（wrappedVK_byRK）', async () => {
+    const db = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      db.doc('users/alice').set({
+        kdfParams: { algo: 'argon2id', salt: 'x' },
+        vaultRev: 1,
+        updatedAt: 1,
+      }),
+    );
+  });
+
+  // ---- #6 vaultRev 單調不遞減 ----
+
+  it('允許 vaultRev 持平或遞增，拒絕回滾', async () => {
+    const db = testEnv.authenticatedContext('carol').firestore();
+    const ref = db.doc('users/carol');
+    const meta = (rev: number) => ({
+      kdfParams: { algo: 'argon2id', salt: 'x' },
+      wrappedVK_byRK: { ct: 'a', iv: 'b' },
+      vaultRev: rev,
+      updatedAt: rev,
+    });
+    await assertSucceeds(ref.set(meta(5)));
+    await assertSucceeds(ref.set(meta(5))); // 持平（重複推送）
+    await assertSucceeds(ref.set(meta(6))); // 遞增
+    await assertFails(ref.set(meta(3))); // 回滾 → 拒絕
   });
 });

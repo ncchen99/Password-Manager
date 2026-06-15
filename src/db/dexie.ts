@@ -15,6 +15,15 @@ export interface VaultMeta extends VaultKeyset {
   updatedAt: number;
   /** 本機指紋解鎖（WebAuthn PRF 包裝的 VK）。可選、絕不上傳。 */
   passkey?: PasskeyKeyset;
+  /**
+   * 此金庫綁定的雲端帳戶 uid（首次同步時寫入）。本機專用、絕不上傳。
+   * 後續同步前會比對登入中的 uid；不符即拒絕，避免把密文推送到他人帳戶（#3）。
+   */
+  boundUid?: string;
+  /** 連續解鎖失敗次數（成功後歸零）。用於本機節流，抵抗離線暴力破解（#10）。 */
+  failedAttempts?: number;
+  /** 解鎖鎖定到期時間戳（ms）。在此之前拒絕嘗試。 */
+  lockoutUntil?: number;
 }
 
 const db = new Dexie('safevault') as Dexie & {

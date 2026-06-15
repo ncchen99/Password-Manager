@@ -8,9 +8,11 @@ import {
   getMeta,
   bulkPutEncrypted,
   replaceMeta,
+  gcTombstones,
 } from '@/db/repo';
 import { mergeEntries, mergeMeta } from './merge';
 import {
+  deleteRemoteEntry,
   fetchRemoteEntries,
   fetchRemoteMeta,
   pushRemoteEntries,
@@ -27,10 +29,25 @@ export interface SyncOutcome {
 }
 
 /**
- * 雙向同步一次。前提：本機已有 meta（已建庫）。
- * 不需要 VK——同步只搬密文；解密在他處進行。
+ * 把一筆密文記錄在「新 id」下重新加密（解開舊 AAD、以新 id 為 AAD 重新封裝）。
+ * 衝突合併會給落敗版本指派新 id；因密文以條目 id 綁定 AAD（見 crypto/vault），
+ * 副本必須重新加密才能被正確解密。此函式由握有 VK 的呼叫端提供（同步層本身不持有 VK）。
+ *
+ * @param record  欲重封裝的記錄（其 `id` 為新 id；`conflictOf` 指向原 id = 舊 AAD）
  */
-export async function syncNow(uid: string): Promise<SyncOutcome> {
+export type ReEncryptForNewId = (
+  record: EncryptedEntry,
+) => Promise<EncryptedEntry>;
+
+/**
+ * 雙向同步一次。前提：本機已有 meta（已建庫）。
+ * 同步本身只搬密文；但 AAD 綁定 id 後，衝突副本需以新 id 重新加密，
+ * 故由呼叫端（vaultStore，持有 VK）傳入 `reEncrypt`。省略時退回沿用原密文（測試用）。
+ */
+export async function syncNow(
+  uid: string,
+  reEncrypt?: ReEncryptForNewId,
+): Promise<SyncOutcome> {
   const localMeta = await getMeta();
   if (!localMeta) throw new Error('本機尚無金庫，無法同步');
 
@@ -49,11 +66,29 @@ export async function syncNow(uid: string): Promise<SyncOutcome> {
     listEncryptedEntries(),
     fetchRemoteEntries(uid),
   ]);
-  const { resolved, toPush, conflicts } = mergeEntries(local, remote, newId);
+  const merged = mergeEntries(local, remote, newId);
+  let { resolved, toPush } = merged;
+  const { conflicts } = merged;
+
+  // 衝突副本換了新 id → 以新 id 重新加密（AAD 綁定 id），否則之後無法解密。
+  if (reEncrypt && conflicts.length > 0) {
+    const replacement = new Map<EncryptedEntry, EncryptedEntry>();
+    for (const copy of conflicts) {
+      replacement.set(copy, await reEncrypt(copy));
+    }
+    const apply = (arr: EncryptedEntry[]) =>
+      arr.map((e) => replacement.get(e) ?? e);
+    resolved = apply(resolved);
+    toPush = apply(toPush);
+  }
 
   // 先寫回本機（含下載與衝突副本），再推送遠端
   await bulkPutEncrypted(resolved);
   await pushRemoteEntries(uid, toPush);
+
+  // 墓碑 GC：清除已傳播 30 天以上的刪除標記（本機 + 遠端），避免無限增長。
+  const collected = await gcTombstones();
+  for (const id of collected) await deleteRemoteEntry(uid, id);
 
   const pulled = countPulled(local, resolved);
   return { pushed: toPush.length, pulled, conflicts: conflicts.length };
@@ -62,7 +97,7 @@ export async function syncNow(uid: string): Promise<SyncOutcome> {
 function toRemoteMeta(m: VaultMeta): RemoteMetaDoc {
   return {
     kdfParams: m.kdfParams,
-    wrappedVK_byMEK: m.wrappedVK_byMEK,
+    ...(m.wrappedVK_byMEK ? { wrappedVK_byMEK: m.wrappedVK_byMEK } : {}),
     wrappedVK_byRK: m.wrappedVK_byRK,
     vaultRev: m.vaultRev,
     updatedAt: m.updatedAt,

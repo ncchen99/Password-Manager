@@ -43,7 +43,18 @@ export function VaultPage() {
       if (hasPasskey) {
         if (confirm('要停用指紋解鎖嗎？之後改用主密碼解鎖。')) await disablePasskey();
       } else {
-        await enablePasskey(); // 觸發系統指紋/Face 註冊
+        try {
+          await enablePasskey(); // 觸發系統指紋/Face 註冊
+        } catch (e) {
+          // 日常解鎖的 VK 不可匯出，無法直接包裝 → 需再次驗證主密碼後重試（#1）。
+          if (e instanceof Error && (e as { code?: string }).code === 'REAUTH_REQUIRED') {
+            const pw = prompt('為保護金鑰，請再次輸入主密碼以啟用指紋解鎖');
+            if (!pw) return;
+            await enablePasskey(pw);
+          } else {
+            throw e;
+          }
+        }
         alert('已啟用指紋解鎖，下次開啟可用指紋快速解鎖。');
       }
     } catch (e) {

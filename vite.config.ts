@@ -11,7 +11,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 安全：密碼管理器不應在背景靜默換版。改為 prompt——新版 Service Worker
+      // 會等待，由 UI 明確提示使用者後才接管（#11），降低 hosting/CDN 被入侵時
+      // 惡意版本自動執行的風險。
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'SafeVault 密碼管理器',

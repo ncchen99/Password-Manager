@@ -100,7 +100,7 @@ export function mergeEntries(
 
 export interface RemoteMeta {
   kdfParams: unknown;
-  wrappedVK_byMEK: unknown;
+  wrappedVK_byMEK?: unknown; // 免密碼金庫沒有主密碼包裝
   wrappedVK_byRK: unknown;
   vaultRev: number;
   updatedAt: number;

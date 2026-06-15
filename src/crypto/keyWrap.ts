@@ -37,10 +37,20 @@ export async function wrapVaultKey(
   return { ct: bytesToBase64(new Uint8Array(wrapped)), iv: bytesToBase64(iv) };
 }
 
-/** 用包裝金鑰解出 VK */
+/**
+ * 用包裝金鑰解出 VK。
+ *
+ * `extractable` 預設為 **false**：日常解鎖（主密碼 / 指紋）取得的 VK 僅供記憶體中
+ * encrypt/decrypt 使用，無法被 `exportKey` 匯出 → 即使遭遇 XSS / 惡意擴充，攻擊者也
+ * 無法竊取 32-byte 原始金鑰離線解密或植入後門（只能在當前頁面逐筆解密，門檻顯著提高）。
+ *
+ * 僅在需要「重新包裝 VK」的特權流程（建立金庫、復原、換主密碼、啟用指紋）才需
+ * `extractable: true`——因為 `wrapKey` 只能包裝可匯出的金鑰。這些流程都伴隨重新驗證。
+ */
 export async function unwrapVaultKey(
   wrapped: WrappedKey,
   wrappingKey: CryptoKey,
+  extractable = false,
 ): Promise<CryptoKey> {
   return crypto.subtle.unwrapKey(
     'raw',
@@ -48,7 +58,7 @@ export async function unwrapVaultKey(
     wrappingKey,
     { name: 'AES-GCM', iv: toArrayBuffer(base64ToBytes(wrapped.iv)) },
     { name: 'AES-GCM', length: 256 },
-    true,
+    extractable,
     ['encrypt', 'decrypt'],
   );
 }

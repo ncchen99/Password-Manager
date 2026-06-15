@@ -1,6 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ShieldCheckIcon } from '@heroicons/react/24/solid';
 import { useVaultStore } from '@/store/vaultStore';
+import { estimatePasswordStrength } from '@/lib/passwordStrength';
+
+const STRENGTH_META: Record<
+  ReturnType<typeof estimatePasswordStrength>['level'],
+  { label: string; bar: string }
+> = {
+  weak: { label: '弱', bar: 'bg-error' },
+  fair: { label: '普通', bar: 'bg-warning' },
+  good: { label: '良好', bar: 'bg-info' },
+  strong: { label: '強', bar: 'bg-success' },
+};
 
 export function CreateVault() {
   const create = useVaultStore((s) => s.create);
@@ -9,9 +20,10 @@ export function CreateVault() {
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const tooShort = pw.length > 0 && pw.length < 8;
+  const strength = useMemo(() => estimatePasswordStrength(pw), [pw]);
+  const tooWeak = pw.length > 0 && !strength.acceptable;
   const mismatch = confirm.length > 0 && pw !== confirm;
-  const canSubmit = pw.length >= 8 && pw === confirm && !busy;
+  const canSubmit = strength.acceptable && pw === confirm && !busy;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,10 +58,31 @@ export function CreateVault() {
             className="input input-bordered touch-target"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            aria-invalid={tooShort}
+            aria-invalid={tooWeak}
           />
-          {tooShort && (
-            <span className="mt-1 text-xs text-error">至少 8 個字元</span>
+          {pw.length > 0 && (
+            <div className="mt-2">
+              <div className="flex h-1.5 gap-1" aria-hidden="true">
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className={`flex-1 rounded-full ${
+                      i < strength.score
+                        ? STRENGTH_META[strength.level].bar
+                        : 'bg-base-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="mt-1 flex justify-between text-xs">
+                <span className="text-base-content/60">
+                  強度：{STRENGTH_META[strength.level].label}
+                </span>
+                {strength.hint && (
+                  <span className="text-error">{strength.hint}</span>
+                )}
+              </div>
+            </div>
           )}
         </label>
 

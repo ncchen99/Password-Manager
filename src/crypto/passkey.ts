@@ -14,7 +14,14 @@
 import { base64ToBytes, bytesToBase64, utf8ToBytes } from './encoding';
 import { unwrapVaultKey, wrapVaultKey, type WrappedKey } from './keyWrap';
 
-/** 本機專用的 Passkey 金鑰包裝（絕不上傳）。 */
+/**
+ * 本機專用的 Passkey 金鑰包裝（絕不上傳）。
+ *
+ * 信任模型（#7）：`wrappedVK` 存於未加密的 IndexedDB。它本身不違反零知識（不離開裝置），
+ * 但其安全性等同「裝置完整性 + 平台驗證器（Touch ID/Face）的生物辨識把關」：
+ * 攻擊者即使讀到 `wrappedVK`，仍需通過生物辨識才能取得 PRF 秘密解開它。
+ * 若平台驗證器被繞過或裝置已被入侵，此包裝即非最後防線——此時請改用主密碼/復原碼解鎖。
+ */
 export interface PasskeyKeyset {
   /** WebAuthn credential rawId（base64），解鎖時用於 allowCredentials。 */
   credentialId: string;
@@ -43,6 +50,13 @@ function ab(u: Uint8Array): ArrayBuffer {
   return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
 }
 
+/**
+ * HKDF 域分離 salt（固定且具版本）。非空 salt 確保此 PRF 派生與其他用途／其他應用
+ * 不會碰撞，即使底層 PRF 輸出存在微小偏誤也有額外分離保證。
+ * 固定值即可（salt 不需保密）；變更此常數會使既有 passkey 包裝失效。
+ */
+const HKDF_SALT = utf8ToBytes('safevault-prf-hkdf-salt-v1');
+
 /** HKDF：PRF 秘密 → 用於 wrap/unwrap VK 的 AES-GCM 金鑰。 */
 export async function derivePrfKey(secret: ArrayBuffer): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey('raw', secret, 'HKDF', false, [
@@ -52,7 +66,7 @@ export async function derivePrfKey(secret: ArrayBuffer): Promise<CryptoKey> {
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: new ArrayBuffer(0),
+      salt: ab(HKDF_SALT),
       info: ab(utf8ToBytes('safevault-prf-vk')),
     },
     base,

@@ -3,9 +3,10 @@
  * VK 與解密後的條目只存在記憶體；閒置逾時自動上鎖並清除金鑰。
  */
 import { create } from 'zustand';
-import type { ServiceEntry } from '@/types/entry';
+import type { EncryptedEntry, ServiceEntry } from '@/types/entry';
 import {
   createVault,
+  createPasswordlessVault,
   unlockWithMasterPassword,
   recoverWithCode,
   rekeyVault,
@@ -19,21 +20,34 @@ import {
 import { deriveAliases } from '@/search/alias';
 import { syncBus } from '@/sync/bus';
 import {
+  bulkPutEncrypted,
   clearPasskey,
+  clearUnlockFailures,
   deleteEntry as dbDelete,
   getEncryptedEntry,
   getMeta,
   listLiveEntries,
   putEncryptedEntry,
+  recordUnlockFailure,
   replaceMeta,
   saveMeta,
   savePasskey,
+  setBoundUid,
 } from '@/db/repo';
 import type { SyncOutcome } from '@/sync/sync';
 
 export type VaultStatus = 'loading' | 'no-vault' | 'locked' | 'unlocked';
 
 const AUTO_LOCK_MS = 5 * 60 * 1000;
+
+/** 啟用指紋需要可匯出 VK，但目前 session VK 不可匯出 → 需重新輸入主密碼驗證。 */
+export class ReauthRequiredError extends Error {
+  readonly code = 'REAUTH_REQUIRED';
+  constructor() {
+    super('請重新輸入主密碼以啟用指紋');
+    this.name = 'ReauthRequiredError';
+  }
+}
 
 interface VaultState {
   status: VaultStatus;
@@ -46,13 +60,28 @@ interface VaultState {
   passkeySupported: boolean;
   /** 本機是否已啟用指紋解鎖。 */
   hasPasskey: boolean;
+  /** 此金庫是否設有主密碼（免密碼金庫為 false）。 */
+  hasMasterPassword: boolean;
+  /** 解鎖後建議在此裝置啟用指紋（例如用復原碼還原、或主密碼建立後）。 */
+  suggestPasskey: boolean;
 
   init: () => Promise<void>;
   create: (masterPassword: string) => Promise<void>;
+  /** 免密碼建立：產生金庫 → 註冊指紋 Passkey（觸發 Touch ID）→ 解鎖。 */
+  createWithPasskey: () => Promise<void>;
   unlock: (masterPassword: string) => Promise<void>;
   unlockWithPasskey: () => Promise<void>;
-  enablePasskey: () => Promise<void>;
+  /** 用復原碼解鎖（換裝置還原；不重設主密碼）。 */
+  restoreWithCode: (recoveryCode: string) => Promise<void>;
+  /**
+   * 換裝置採用雲端既有金庫：拉取遠端 meta + 密文寫入本機，狀態轉為 locked。
+   * 回傳 true 表示遠端有金庫（接著由解鎖頁用復原碼/指紋還原）。
+   */
+  tryAdoptRemoteVault: (uid: string) => Promise<boolean>;
+  /** 啟用指紋；若 session VK 不可匯出，需傳入主密碼重新驗證（否則擲 ReauthRequiredError）。 */
+  enablePasskey: (reauthPassword?: string) => Promise<void>;
   disablePasskey: () => Promise<void>;
+  dismissPasskeySuggestion: () => void;
   lock: () => void;
   touch: () => void;
   saveEntry: (entry: ServiceEntry) => Promise<void>;
@@ -75,12 +104,15 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   autoLockTimer: null,
   passkeySupported: isPasskeySupported(),
   hasPasskey: false,
+  hasMasterPassword: false,
+  suggestPasskey: false,
 
   init: async () => {
     const meta = await getMeta();
     set({
       status: meta ? 'locked' : 'no-vault',
       hasPasskey: Boolean(meta?.passkey),
+      hasMasterPassword: Boolean(meta?.wrappedVK_byMEK),
     });
   },
 
@@ -95,7 +127,41 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         status: 'unlocked',
         entries: [],
         lastRecoveryCode: recoveryCode,
+        hasMasterPassword: true,
+        // 主密碼建立後，若此裝置支援指紋則建議啟用（更快解鎖）
+        suggestPasskey: get().passkeySupported && !get().hasPasskey,
       });
+      syncBus.emitLocalChange();
+    } catch (e) {
+      set({ error: errMsg(e) });
+      throw e;
+    }
+  },
+
+  /**
+   * 免密碼建立金庫（預設路徑）：產生免密碼金庫 → 立刻註冊指紋 Passkey
+   * 並以 PRF 包裝同一把 VK → 解鎖。完全不需輸入主密碼；復原碼為唯一可攜備援。
+   * 若使用者取消指紋或裝置不支援 PRF，會擲回錯誤、不留下半套金庫，交由 UI 退回主密碼。
+   */
+  createWithPasskey: async () => {
+    set({ error: null });
+    try {
+      const { recoveryCode, vk, ...keyset } = await createPasswordlessVault();
+      // 先註冊指紋（會跳出 Touch ID）；失敗就中止，避免建立無法解鎖的金庫
+      const passkey = await cryptoEnablePasskey(vk);
+      await saveMeta(keyset);
+      await savePasskey(passkey);
+      get().touch();
+      set({
+        vk,
+        status: 'unlocked',
+        entries: [],
+        lastRecoveryCode: recoveryCode,
+        hasPasskey: true,
+        hasMasterPassword: false,
+        suggestPasskey: false,
+      });
+      syncBus.emitLocalChange();
     } catch (e) {
       set({ error: errMsg(e) });
       throw e;
@@ -109,18 +175,34 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       set({ error: '找不到本機金庫', status: 'no-vault' });
       return;
     }
+    // #10 本機節流：鎖定期間直接拒絕，抵抗離線字典/暴力破解。
+    const waitMs = (meta.lockoutUntil ?? 0) - Date.now();
+    if (waitMs > 0) {
+      set({ error: `嘗試過於頻繁，請於 ${Math.ceil(waitMs / 1000)} 秒後再試` });
+      return;
+    }
     try {
       const vk = await unlockWithMasterPassword(masterPassword, meta);
       const encrypted = await listLiveEntries();
       const entries = await Promise.all(
         encrypted.map((rec) => decryptEntry(rec, vk)),
       );
+      await clearUnlockFailures();
       get().touch();
       set({ vk, entries, status: 'unlocked' });
       syncBus.emitLocalChange(); // 解鎖後若已登入則拉取遠端 + 啟動即時同步
     } catch {
       // AES-GCM 驗證失敗 → 主密碼錯誤
-      set({ error: '主密碼錯誤，請再試一次' });
+      const { failedAttempts, lockoutUntil } = await recordUnlockFailure();
+      const lockMs = lockoutUntil - Date.now();
+      set({
+        error:
+          lockMs > 0
+            ? `主密碼錯誤，已連續失敗 ${failedAttempts} 次，請於 ${Math.ceil(
+                lockMs / 1000,
+              )} 秒後再試`
+            : '主密碼錯誤，請再試一次',
+      });
     }
   },
 
@@ -138,6 +220,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       const entries = await Promise.all(
         encrypted.map((rec) => decryptEntry(rec, vk)),
       );
+      await clearUnlockFailures();
       get().touch();
       set({ vk, entries, status: 'unlocked' });
       syncBus.emitLocalChange();
@@ -146,14 +229,94 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     }
   },
 
-  /** 啟用指紋解鎖：用目前記憶體中的 VK，建立 Passkey 並額外包裝一份 VK。 */
-  enablePasskey: async () => {
+  /**
+   * 用復原碼解鎖（換裝置還原的主要路徑）。只解出 VK 解鎖，不重設主密碼；
+   * 解鎖後若此裝置支援指紋且尚未啟用 → 建議啟用，之後即可指紋快速解鎖。
+   */
+  restoreWithCode: async (recoveryCode) => {
+    set({ error: null });
+    const meta = await getMeta();
+    if (!meta) {
+      set({ error: '找不到本機金庫', status: 'no-vault' });
+      return;
+    }
+    let vk: CryptoKey;
+    try {
+      vk = await recoverWithCode(recoveryCode.trim(), meta);
+    } catch {
+      set({ error: '復原碼錯誤，請確認後再試' });
+      throw new Error('復原碼錯誤');
+    }
+    const encrypted = await listLiveEntries();
+    const entries = await Promise.all(
+      encrypted.map((rec) => decryptEntry(rec, vk)),
+    );
+    await clearUnlockFailures();
+    get().touch();
+    set({
+      vk,
+      entries,
+      status: 'unlocked',
+      suggestPasskey: get().passkeySupported && !get().hasPasskey,
+    });
+    syncBus.emitLocalChange();
+  },
+
+  /**
+   * 換裝置採用雲端既有金庫：抓遠端 meta + 密文寫入本機，狀態轉 locked。
+   * 不需要 VK（只搬密文）；回傳 true 表示遠端確實有金庫可還原。
+   */
+  tryAdoptRemoteVault: async (uid) => {
+    const { fetchRemoteMeta, fetchRemoteEntries } = await import(
+      '@/sync/remote'
+    );
+    const remoteMeta = await fetchRemoteMeta(uid);
+    if (!remoteMeta) return false; // 雲端沒有金庫 → 視為新使用者
+    const now = Date.now();
+    await replaceMeta({
+      id: 'self',
+      kdfParams: remoteMeta.kdfParams,
+      wrappedVK_byMEK: remoteMeta.wrappedVK_byMEK,
+      wrappedVK_byRK: remoteMeta.wrappedVK_byRK,
+      vaultRev: remoteMeta.vaultRev,
+      createdAt: now,
+      updatedAt: remoteMeta.updatedAt,
+    });
+    const entries = await fetchRemoteEntries(uid);
+    if (entries.length) await bulkPutEncrypted(entries);
+    set({
+      status: 'locked',
+      hasPasskey: false, // 新裝置尚未註冊本機指紋
+      hasMasterPassword: Boolean(remoteMeta.wrappedVK_byMEK),
+    });
+    return true;
+  },
+
+  /**
+   * 啟用指紋解鎖：用目前記憶體中的 VK，建立 Passkey 並額外包裝一份 VK。
+   *
+   * 包裝（wrapKey）需要可匯出的 VK。建立/復原流程的 VK 本就可匯出，可直接使用；
+   * 但日常主密碼/指紋解鎖得到的 VK 為不可匯出（#1），此時需重新輸入主密碼以取得
+   * 可匯出 VK。未提供 reauthPassword 時擲回 ReauthRequiredError，由 UI 提示再輸入。
+   */
+  enablePasskey: async (reauthPassword?: string) => {
     const { vk } = get();
     if (!vk) throw new Error('金庫未解鎖');
     set({ error: null });
-    const passkey = await cryptoEnablePasskey(vk);
+    let wrapVk = vk;
+    if (!vk.extractable) {
+      if (!reauthPassword) throw new ReauthRequiredError();
+      const meta = await getMeta();
+      if (!meta) throw new Error('找不到本機金庫');
+      try {
+        wrapVk = await unlockWithMasterPassword(reauthPassword, meta, true);
+      } catch {
+        throw new Error('主密碼錯誤，無法啟用指紋');
+      }
+    }
+    const passkey = await cryptoEnablePasskey(wrapVk);
     await savePasskey(passkey);
-    set({ hasPasskey: true });
+    set({ hasPasskey: true, suggestPasskey: false });
   },
 
   /** 停用指紋解鎖：移除本機 PRF 包裝（主密碼/復原碼不受影響）。 */
@@ -161,6 +324,8 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     await clearPasskey();
     set({ hasPasskey: false });
   },
+
+  dismissPasskeySuggestion: () => set({ suggestPasskey: false }),
 
   lock: () => {
     const { autoLockTimer } = get();
@@ -279,9 +444,29 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   syncWithRemote: async (uid) => {
     const { vk } = get();
     if (!vk) throw new Error('金庫未解鎖');
+
+    // #3 帳戶綁定：金庫首次同步時綁定當前 uid；之後若登入帳戶不符即拒絕，
+    // 避免誤切換/惡意切換帳號把密文推送到他人 UID。
+    const meta = await getMeta();
+    if (meta?.boundUid && meta.boundUid !== uid) {
+      throw new Error(
+        '此金庫已綁定其他雲端帳戶，為保護資料已停止同步。請改用原帳戶登入，或先登出再以原帳戶重新登入。',
+      );
+    }
+    if (meta && !meta.boundUid) await setBoundUid(uid);
+
+    // #4 衝突副本以新 id 重新加密（AAD 綁定 id）。同步層不持有 VK，故由此處注入。
+    const reEncrypt = async (copy: EncryptedEntry): Promise<EncryptedEntry> => {
+      // 墓碑（無密文）無須重新加密
+      if (copy.deleted || !copy.ciphertext || !copy.conflictOf) return copy;
+      const entry = await decryptEntry({ ...copy, id: copy.conflictOf }, vk);
+      const re = await encryptEntry({ ...entry, id: copy.id }, vk, copy.rev);
+      return { ...re, baseRev: copy.baseRev, conflictOf: copy.conflictOf };
+    };
+
     // 動態載入同步鏈（含 Firebase SDK），純本地使用時不進入關鍵路徑
     const { syncNow } = await import('@/sync/sync');
-    const outcome = await syncNow(uid);
+    const outcome = await syncNow(uid, reEncrypt);
     // 同步可能下載/新增了條目或衝突副本 → 重新解密整份
     const encrypted = await listLiveEntries();
     const entries = await Promise.all(

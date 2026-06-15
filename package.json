@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:rules": "firebase emulators:exec --config firebase/firebase.json --only firestore \"RUN_RULES_TESTS=true vitest run src/sync/rules.test.ts\"",
     "gen:brands": "node scripts/gen-brands.mjs",
     "emulators": "firebase emulators:start --config firebase/firebase.json"
   },

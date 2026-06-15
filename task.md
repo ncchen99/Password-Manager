@@ -151,3 +151,13 @@
 - **即時 + 離線自動同步**：`sync/bus.ts` 解耦事件匯流排；`remote.ts` `subscribeRemote`（onSnapshot 即時拉取，略過本機回音）；authStore 去抖動同步 + online/visibilitychange 補同步；vaultStore 寫入/解鎖時 emit。
 - **跨裝置刪除**：以墓碑（`EncryptedEntry.deleted`）取代硬刪，避免合併把「本機已刪」誤判為「需從遠端拉回」而復活；`firestore.rules` 白名單加 `deleted`（需 `firebase deploy --config firebase/firebase.json --only firestore:rules` 才生效）。
 - 驗證：tsc 乾淨、vitest 55 通過（+3 墓碑合併測試）、vite build 成功、瀏覽器手機端驗證（導覽、彩色 icon、Snackbar「已複製密碼」、零外部請求）。
+
+## 2026-06-16 — 免主密碼預設 onboarding（Google + 指紋）＋ 跨裝置還原
+
+- **決議**：使用者選擇「完全免主密碼」＋「含跨裝置還原流程」。預設路徑＝Google 登入定位身分 → 用這台裝置的指紋（Passkey/PRF）建立並解鎖金庫，完全不設主密碼；復原碼是唯一可攜備援。不支援指紋時才退回設定主密碼。
+- **crypto（`vaultSetup.ts`）**：`VaultKeyset.wrappedVK_byMEK` 改為**可選**；新增 `createPasswordlessVault()`（VK＋復原碼，僅 RK 包裝，無 MEK）。`unlockWithMasterPassword` 在無 MEK 時擲錯。可選 MEK 串到 `sync/remote.RemoteMetaDoc`＋`sync.toRemoteMeta`（推送時略過 undefined，避免 Firestore 拒絕；rules `hasOnly` 本就允許省略，免改規則）、`merge.RemoteMeta`。
+- **vaultStore**：`createWithPasskey()`（免密碼建庫→當場註冊 Passkey→解鎖）、`restoreWithCode(code)`（換裝置用復原碼解鎖，不重設主密碼）、`tryAdoptRemoteVault(uid)`（拉遠端 meta＋密文→狀態轉 locked）、旗標 `hasMasterPassword`/`suggestPasskey`、`dismissPasskeySuggestion()`。
+- **UI**：新增 `features/onboarding/SetupFlow.tsx`（導覽→預設 Google 登入→採用雲端既有金庫或免密碼建庫；「改用主密碼」「略過僅本機」後援），於 `App.tsx` 取代舊 `NoVaultFlow`。`UnlockVault` 改為指紋優先＋條件式主密碼＋「用復原碼解鎖」（新 `RestoreWithCode.tsx`）；新增 `EnablePasskeyPrompt.tsx`（建庫/還原後建議啟用指紋）。Onboarding 第 2 張卡重寫（復原碼為可攜秘密；換裝置＝還原一次後改用指紋）。
+- **跨裝置真相（修正使用者誤解）**：PRF 指紋綁定裝置且永不上傳，新裝置無法只靠指紋解鎖 → 必須 `tryAdoptRemoteVault` 後用復原碼 `restoreWithCode` 還原一次，再於該裝置註冊新指紋。**復原碼因此是關鍵可攜秘密**，非單純忘記密碼備援。
+- **配合同期安全強化**（使用者並行修改）：VK 預設不可匯出（`unwrapVaultKey`/`unlockWithMasterPassword` 加 `extractable` 旗標、`recoverWithCode` 回傳可匯出供重包裝）；移除 `rewrapForNewMasterPassword`（改用 `rekeyVault`，已同步更新測試）；`syncNow(uid, reEncrypt?)` 加 AAD 重加密回呼。
+- 驗證：tsc 乾淨、**56 測試通過**（6 emulator 跳過；+免密碼金庫 crypto 測試、+免密碼 meta rules 測試）、vite build 成功；預覽手機端確認導覽→啟用同步→建庫三階段渲染正確、主密碼後援可真正建庫並解鎖、console 零錯誤。真實指紋（Touch ID）與 Google 彈窗無法在 headless 預覽驗證（需真機平台驗證器），`createWithPasskey` 在 headless 因無驗證器而卡住＝預期。

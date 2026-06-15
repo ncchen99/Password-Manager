@@ -18,13 +18,41 @@ import { generateRecoveryCode, normalizeRecoveryCode } from './recovery';
 
 export interface VaultKeyset {
   kdfParams: KdfParams;
-  wrappedVK_byMEK: WrappedKey;
+  /**
+   * 主密碼包裝。**可選**：免密碼金庫（指紋 + 復原碼）沒有這把包裝；
+   * 之後若使用者另設主密碼才會補上。
+   */
+  wrappedVK_byMEK?: WrappedKey;
   wrappedVK_byRK: WrappedKey;
 }
 
 export interface NewVault extends VaultKeyset {
   recoveryCode: string;
   vk: CryptoKey;
+}
+
+/** 免密碼金庫的 keyset（沒有 MEK；解鎖靠指紋 PRF，備援靠復原碼）。 */
+export interface PasswordlessVault {
+  kdfParams: KdfParams;
+  wrappedVK_byRK: WrappedKey;
+  recoveryCode: string;
+  vk: CryptoKey;
+}
+
+/**
+ * 建立免密碼金庫：產生 VK + 復原碼，只用復原碼（RK）包裝一份。
+ * 指紋（PRF）包裝由 enablePasskey 在取得 VK 後另外補上；
+ * 復原碼是唯一可攜的秘密（換裝置時用它還原）。
+ */
+export async function createPasswordlessVault(): Promise<PasswordlessVault> {
+  const kdfParams = defaultKdfParams();
+  const recoveryCode = generateRecoveryCode();
+  const rk = await importWrappingKey(
+    await deriveKeyMaterial(normalizeRecoveryCode(recoveryCode), kdfParams),
+  );
+  const vk = await generateVaultKey();
+  const wrappedVK_byRK = await wrapVaultKey(vk, rk);
+  return { kdfParams, wrappedVK_byRK, recoveryCode, vk };
 }
 
 /** 建立新金庫：產生 VK + 復原碼，並用 MEK / RK 各包裝一份 */
@@ -72,18 +100,32 @@ export async function rekeyVault(
   return { kdfParams, wrappedVK_byMEK, wrappedVK_byRK, recoveryCode };
 }
 
-/** 用主密碼解鎖：派生 MEK → unwrap VK */
+/**
+ * 用主密碼解鎖：派生 MEK → unwrap VK。
+ *
+ * `extractable` 預設 false：日常解鎖得到的 VK 不可匯出（見 keyWrap.unwrapVaultKey）。
+ * 只有「解鎖後還要重新包裝 VK」的特權流程（例如在設定中啟用指紋）才會傳 true，
+ * 並且必須伴隨重新輸入主密碼驗證。
+ */
 export async function unlockWithMasterPassword(
   masterPassword: string,
   keyset: Pick<VaultKeyset, 'kdfParams' | 'wrappedVK_byMEK'>,
+  extractable = false,
 ): Promise<CryptoKey> {
+  if (!keyset.wrappedVK_byMEK) {
+    throw new Error('此金庫未設定主密碼，請改用指紋或復原碼');
+  }
   const mek = await importWrappingKey(
     await deriveKeyMaterial(masterPassword, keyset.kdfParams),
   );
-  return unwrapVaultKey(keyset.wrappedVK_byMEK, mek);
+  return unwrapVaultKey(keyset.wrappedVK_byMEK, mek, extractable);
 }
 
-/** 用復原碼取回 VK */
+/**
+ * 用復原碼取回 VK。回傳的 VK 為**可匯出**：復原是裝置設定流程，
+ * 後續通常緊接著 rekeyVault（換主密碼）或 enablePasskey（重新包裝 VK），
+ * 兩者都需要可匯出的 VK 才能 wrap。
+ */
 export async function recoverWithCode(
   recoveryCode: string,
   keyset: Pick<VaultKeyset, 'kdfParams' | 'wrappedVK_byRK'>,
@@ -94,21 +136,5 @@ export async function recoverWithCode(
       keyset.kdfParams,
     ),
   );
-  return unwrapVaultKey(keyset.wrappedVK_byRK, rk);
-}
-
-/**
- * 換主密碼：用既有 VK 以新主密碼重新包裝；金庫密文不必重算。
- * 回傳新的 kdfParams 與 wrappedVK_byMEK（wrappedVK_byRK 不變）。
- */
-export async function rewrapForNewMasterPassword(
-  vk: CryptoKey,
-  newMasterPassword: string,
-): Promise<{ kdfParams: KdfParams; wrappedVK_byMEK: WrappedKey }> {
-  const kdfParams = defaultKdfParams();
-  const mek = await importWrappingKey(
-    await deriveKeyMaterial(newMasterPassword, kdfParams),
-  );
-  const wrappedVK_byMEK = await wrapVaultKey(vk, mek);
-  return { kdfParams, wrappedVK_byMEK };
+  return unwrapVaultKey(keyset.wrappedVK_byRK, rk, true);
 }

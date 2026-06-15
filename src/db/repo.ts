@@ -88,6 +88,57 @@ export async function setVaultRev(vaultRev: number): Promise<void> {
   await db.meta.update('self', { vaultRev, updatedAt: Date.now() });
 }
 
+/** 首次同步時把金庫綁定到雲端帳戶 uid（本機專用、絕不上傳）。 */
+export async function setBoundUid(uid: string): Promise<void> {
+  await db.meta.update('self', { boundUid: uid });
+}
+
+/**
+ * 依連續失敗次數計算鎖定毫秒數（漸增退避，抵抗離線暴力破解）。
+ * 前 2 次不鎖；之後 5s → 30s → 1m → 5m，最高 5 分鐘。
+ */
+export function lockoutDurationMs(failedAttempts: number): number {
+  if (failedAttempts < 3) return 0;
+  if (failedAttempts < 5) return 5_000;
+  if (failedAttempts < 7) return 30_000;
+  if (failedAttempts < 10) return 60_000;
+  return 5 * 60_000;
+}
+
+/** 記錄一次解鎖失敗：遞增計數並依退避表設定鎖定到期時間。回傳更新後狀態。 */
+export async function recordUnlockFailure(): Promise<{
+  failedAttempts: number;
+  lockoutUntil: number;
+}> {
+  const meta = await getMeta();
+  const failedAttempts = (meta?.failedAttempts ?? 0) + 1;
+  const lockoutUntil = Date.now() + lockoutDurationMs(failedAttempts);
+  await db.meta.update('self', { failedAttempts, lockoutUntil });
+  return { failedAttempts, lockoutUntil };
+}
+
+/** 解鎖成功後清除失敗計數與鎖定。 */
+export async function clearUnlockFailures(): Promise<void> {
+  await db.meta.update('self', { failedAttempts: 0, lockoutUntil: 0 });
+}
+
+/**
+ * 清除超過 maxAgeMs 的墓碑（已刪除且早於門檻者）。回傳被清除的 id 清單，
+ * 供呼叫端一併刪除遠端文件。預設 30 天——足夠讓所有裝置都同步到刪除事件。
+ */
+export async function gcTombstones(
+  maxAgeMs = 30 * 24 * 60 * 60 * 1000,
+): Promise<string[]> {
+  const cutoff = Date.now() - maxAgeMs;
+  const stale = (await listEncryptedEntries()).filter(
+    (e) => e.deleted && e.updatedAt < cutoff,
+  );
+  if (stale.length === 0) return [];
+  const ids = stale.map((e) => e.id);
+  await db.entries.bulkDelete(ids);
+  return ids;
+}
+
 /**
  * 刪除條目：寫入墓碑（保留 id、遞增 rev、清空密文），而非實際移除。
  * 墓碑會在下次同步推送到遠端，讓其他裝置一併刪除。

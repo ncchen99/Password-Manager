@@ -19,7 +19,8 @@ import type { WrappedKey } from '@/crypto/keyWrap';
 
 export interface RemoteMetaDoc {
   kdfParams: KdfParams;
-  wrappedVK_byMEK: WrappedKey;
+  /** 可選：免密碼金庫沒有主密碼包裝。 */
+  wrappedVK_byMEK?: WrappedKey;
   wrappedVK_byRK: WrappedKey;
   vaultRev: number;
   updatedAt: number;
@@ -49,13 +50,15 @@ export async function pushRemoteMeta(
   uid: string,
   meta: RemoteMetaDoc,
 ): Promise<void> {
-  await setDoc(doc(getDb(), 'users', uid), {
+  // Firestore 不接受 undefined 欄位；免密碼金庫省略 wrappedVK_byMEK。
+  const data: Record<string, unknown> = {
     kdfParams: meta.kdfParams,
-    wrappedVK_byMEK: meta.wrappedVK_byMEK,
     wrappedVK_byRK: meta.wrappedVK_byRK,
     vaultRev: meta.vaultRev,
     updatedAt: meta.updatedAt,
-  });
+  };
+  if (meta.wrappedVK_byMEK) data.wrappedVK_byMEK = meta.wrappedVK_byMEK;
+  await setDoc(doc(getDb(), 'users', uid), data);
 }
 
 export async function fetchRemoteEntries(
