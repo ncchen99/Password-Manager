@@ -4,7 +4,7 @@
  * 預設跳過：需要 `@firebase/rules-unit-testing` 與 Firestore Emulator。
  * 執行方式：
  *   npm i -D @firebase/rules-unit-testing
- *   firebase emulators:exec --only firestore \
+ *   firebase emulators:exec --config firebase/firebase.json --only firestore \
  *     "RUN_RULES_TESTS=true npx vitest run src/sync/rules.test.ts"
  *
  * 驗證重點：
@@ -30,7 +30,7 @@ describe.skipIf(!RUN)('firestore.rules — 零知識存取邊界', () => {
     assertSucceeds = rut.assertSucceeds;
     testEnv = await rut.initializeTestEnvironment({
       projectId: 'safevault-rules-test',
-      firestore: { rules: readFileSync('firestore.rules', 'utf8') },
+      firestore: { rules: readFileSync('firebase/firestore.rules', 'utf8') },
     });
   });
 

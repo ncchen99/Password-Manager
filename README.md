@@ -45,5 +45,5 @@ npm run emulators  # Firebase Emulator Suite（M3）
 
 - CI（lint + test + build）— 可選
 - Firestore Rules 測試 / Emulator 端對端：需 Java 執行環境啟動 Firestore Emulator
-  （`npm i -D @firebase/rules-unit-testing` 後 `firebase emulators:exec --only firestore "RUN_RULES_TESTS=true npx vitest run src/sync/rules.test.ts"`）
+  （`npm i -D @firebase/rules-unit-testing` 後 `firebase emulators:exec --config firebase/firebase.json --only firestore "RUN_RULES_TESTS=true npx vitest run src/sync/rules.test.ts"`）
 - 正式雲端同步：將 `.env` 的 `VITE_USE_EMULATORS` 改為 `false`

@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:brands": "node scripts/gen-brands.mjs",
-    "emulators": "firebase emulators:start"
+    "emulators": "firebase emulators:start --config firebase/firebase.json"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

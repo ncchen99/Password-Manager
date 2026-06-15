@@ -118,7 +118,7 @@
 - [ ] CI（lint + test + build）— 可選
 - [!] Firestore Rules 測試 / Emulator 端對端：本機**無 Java 執行環境**，Firestore Emulator
   無法啟動 → `src/sync/rules.test.ts` 維持 gated/skip。待有 JRE 後：
-  `npm i -D @firebase/rules-unit-testing` + `firebase emulators:exec --only firestore "RUN_RULES_TESTS=true npx vitest run src/sync/rules.test.ts"`
+  `npm i -D @firebase/rules-unit-testing` + `firebase emulators:exec --config firebase/firebase.json --only firestore "RUN_RULES_TESTS=true npx vitest run src/sync/rules.test.ts"`
 - 註：`.env` 目前 `VITE_USE_EMULATORS=true`，正式雲端同步請改為 `false`
 
 ## 變更紀錄
@@ -149,5 +149,5 @@
 - **彩色品牌 icon**：`gen-brands.mjs` 加入 `hex`，`brands.generated.ts` 重新產生；`ServiceIcon` 改為品牌色底＋對比自動取白/深 logo（App 圖示風）。
 - **Snackbar 複製回饋**：`store/toastStore.ts` + `components/Snackbar.tsx`；EntryRow 點列複製密碼（已複製密碼），無密碼則複製帳號（已複製帳號），3 秒淡出。
 - **即時 + 離線自動同步**：`sync/bus.ts` 解耦事件匯流排；`remote.ts` `subscribeRemote`（onSnapshot 即時拉取，略過本機回音）；authStore 去抖動同步 + online/visibilitychange 補同步；vaultStore 寫入/解鎖時 emit。
-- **跨裝置刪除**：以墓碑（`EncryptedEntry.deleted`）取代硬刪，避免合併把「本機已刪」誤判為「需從遠端拉回」而復活；`firestore.rules` 白名單加 `deleted`（需 `firebase deploy --only firestore:rules` 才生效）。
+- **跨裝置刪除**：以墓碑（`EncryptedEntry.deleted`）取代硬刪，避免合併把「本機已刪」誤判為「需從遠端拉回」而復活；`firestore.rules` 白名單加 `deleted`（需 `firebase deploy --config firebase/firebase.json --only firestore:rules` 才生效）。
 - 驗證：tsc 乾淨、vitest 55 通過（+3 墓碑合併測試）、vite build 成功、瀏覽器手機端驗證（導覽、彩色 icon、Snackbar「已複製密碼」、零外部請求）。
