@@ -4,10 +4,11 @@
  * 流程：canonicalize → segment → parseBlock(FSM) → score → ImportCandidate[]
  * 全程在本機記憶體執行，不發任何網路請求；輸出由 UI 逐張確認後才寫入金庫。
  */
-import type { ServiceEntry } from '@/types/entry';
+import type { CustomField, ServiceEntry } from '@/types/entry';
 import type { ImportCandidate } from '@/types/import';
 import { newId } from '@/lib/id';
 import { normalize } from '@/search/normalize';
+import { canonicalServiceName } from '@/icons/match';
 import { canonicalize } from './canonicalize';
 import { segment } from './segment';
 import { parseBlock } from './fsm';
@@ -68,11 +69,26 @@ function findDuplicate(
 /** 把確認後的候選轉成可寫入金庫的 ServiceEntry。 */
 export function candidateToEntry(c: ImportCandidate): ServiceEntry {
   const now = Date.now();
-  const { service, username, password, otp, url, note } = c.fields;
+  const { service, username, password, otp, url, note, fields } = c.fields;
+  const raw = service?.trim() || '未命名';
+  // 服務名正規化：FB / 臉書 → Facebook；原輸入保留為別名以利搜尋。
+  const canon = canonicalServiceName(raw);
+  const name = canon?.name ?? raw;
+  const aliases = canon && canon.name !== raw ? [raw] : [];
+
+  const custom: CustomField[] | undefined = fields?.length
+    ? fields.map((f) => ({
+        id: newId(),
+        label: f.label,
+        value: f.value,
+        secret: f.secret,
+      }))
+    : undefined;
+
   return {
     id: newId(),
-    service: service?.trim() || '未命名',
-    aliases: [],
+    service: name,
+    aliases,
     url: url?.trim() || undefined,
     tags: [],
     credentials: [
@@ -82,6 +98,7 @@ export function candidateToEntry(c: ImportCandidate): ServiceEntry {
         password: password || undefined,
         otp: otp?.trim() || undefined,
         note: note?.trim() || undefined,
+        fields: custom,
       },
     ],
     createdAt: now,

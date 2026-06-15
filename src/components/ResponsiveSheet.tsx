@@ -13,9 +13,17 @@ interface Props {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Header 右上角動作（如儲存）。避免底部按鈕被虛擬鍵盤遮擋。 */
+  headerAction?: ReactNode;
 }
 
-export function ResponsiveSheet({ open, title, onClose, children }: Props) {
+export function ResponsiveSheet({
+  open,
+  title,
+  onClose,
+  children,
+  headerAction,
+}: Props) {
   const isMobile = useIsMobile();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -42,6 +50,7 @@ export function ResponsiveSheet({ open, title, onClose, children }: Props) {
         <XMarkIcon className="h-6 w-6" />
       </button>
       {title && <h2 className="text-base font-semibold">{title}</h2>}
+      {headerAction && <div className="ml-auto">{headerAction}</div>}
     </div>
   );
 

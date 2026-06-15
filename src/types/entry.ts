@@ -1,11 +1,24 @@
 /** 解密後的資料模型（只在記憶體中存在，永不上傳明文） */
 
+/** 使用者自訂的標籤欄位：容納各平台特有的雜項資訊／密碼。 */
+export interface CustomField {
+  id: string;
+  /** 使用者自訂標籤：理財密碼 / 電話下單密碼 / 代號 / Email / 電話… */
+  label: string;
+  value: string;
+  /** true → 預設遮蔽顯示（密碼類）。 */
+  secret?: boolean;
+}
+
 export interface Credential {
   id: string;
+  /** 統一「帳號」：可為 ID / Email / 電話，由使用者依該平台自填。 */
   username?: string;
   password?: string;
   otp?: string;
   note?: string;
+  /** 任意數量的自訂標籤欄位；可選 → 既有密文解密後仍合法（向後相容）。 */
+  fields?: CustomField[];
 }
 
 export interface ServiceEntry {

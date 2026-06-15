@@ -3,6 +3,13 @@
  * 全程只存在於使用者裝置記憶體；解析過程不送任何網路請求。
  */
 
+/** 解析出的自訂標籤欄位（對應 Credential.CustomField，不含 id）。 */
+export interface ImportCustomField {
+  label: string;
+  value: string;
+  secret?: boolean;
+}
+
 /** 可被匯入的欄位（對應最終 ServiceEntry / Credential 的子集合） */
 export interface ImportFields {
   service?: string;
@@ -11,9 +18,12 @@ export interface ImportFields {
   url?: string;
   otp?: string;
   note?: string;
+  /** 標籤未命中字典的雜項欄位（理財密碼、卡片密碼、電話…），逐筆保留結構。 */
+  fields?: ImportCustomField[];
 }
 
-export type FieldKey = keyof ImportFields;
+/** 具信心值的固定純量欄位（不含自訂 fields 陣列）。 */
+export type FieldKey = 'service' | 'username' | 'password' | 'url' | 'otp' | 'note';
 
 export const FIELD_KEYS: FieldKey[] = [
   'service',

@@ -34,6 +34,16 @@ export function CandidateCard({ candidate, included, onToggle, onChange }: Props
     onChange({ ...fields, [key]: value });
   }
 
+  function updateCustom(i: number, patch: Partial<{ label: string; value: string; secret: boolean }>) {
+    const next = (fields.fields ?? []).map((f, j) => (j === i ? { ...f, ...patch } : f));
+    onChange({ ...fields, fields: next });
+  }
+
+  function removeCustom(i: number) {
+    const next = (fields.fields ?? []).filter((_, j) => j !== i);
+    onChange({ ...fields, fields: next.length ? next : undefined });
+  }
+
   return (
     <li className={`py-4 ${included ? '' : 'opacity-50'}`}>
       <div className="mb-3 flex items-start gap-3">
@@ -112,6 +122,35 @@ export function CandidateCard({ candidate, included, onToggle, onChange }: Props
             </label>
           );
         })}
+
+        {/* 自訂欄位：標籤未命中字典的雜項（理財密碼、卡片密碼、電話…） */}
+        {(fields.fields ?? []).map((f, i) => (
+          <div key={i} className="flex items-end gap-1.5">
+            <input
+              className="input input-bordered input-sm w-28 flex-none touch-target"
+              value={f.label}
+              onChange={(e) => updateCustom(i, { label: e.target.value })}
+              placeholder="標籤"
+              autoComplete="off"
+            />
+            <input
+              className="input input-bordered input-sm w-full flex-1 touch-target"
+              type={f.secret ? 'password' : 'text'}
+              value={f.value}
+              onChange={(e) => updateCustom(i, { value: e.target.value })}
+              placeholder="值"
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm btn-square touch-target"
+              onClick={() => removeCustom(i)}
+              aria-label="移除此欄位"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
       </div>
     </li>
   );

@@ -17,8 +17,9 @@ export function scoreCandidate(
   fields: ImportFields,
   confidence: Partial<Record<FieldKey, number>>,
 ): Quality {
-  const present = (Object.keys(fields) as FieldKey[]).filter(
-    (k) => fields[k] !== undefined && fields[k] !== '',
+  const present = (Object.keys(fields) as (keyof ImportFields)[]).filter(
+    (k): k is FieldKey =>
+      k !== 'fields' && fields[k] !== undefined && fields[k] !== '',
   );
 
   const confs = present.map((k) => confidence[k] ?? 0.5);
