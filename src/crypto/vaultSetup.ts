@@ -46,6 +46,32 @@ export async function createVault(masterPassword: string): Promise<NewVault> {
   return { kdfParams, wrappedVK_byMEK, wrappedVK_byRK, recoveryCode, vk };
 }
 
+/**
+ * 以既有 VK 重新建立整組金鑰包裝：產生新的 kdfParams、新主密碼的 MEK、
+ * 以及**全新的復原碼**（使舊復原碼失效，符合規格 §10.2）。
+ * 用於「忘記主密碼」復原後重設，或已解鎖狀態下重新產生 Emergency Kit。
+ * MEK 與 RK 共用同一份 kdfParams，確保兩份 wrap 永遠可被對應金鑰解開。
+ */
+export async function rekeyVault(
+  vk: CryptoKey,
+  newMasterPassword: string,
+): Promise<Omit<NewVault, 'vk'>> {
+  const kdfParams = defaultKdfParams();
+  const recoveryCode = generateRecoveryCode();
+
+  const mek = await importWrappingKey(
+    await deriveKeyMaterial(newMasterPassword, kdfParams),
+  );
+  const rk = await importWrappingKey(
+    await deriveKeyMaterial(normalizeRecoveryCode(recoveryCode), kdfParams),
+  );
+
+  const wrappedVK_byMEK = await wrapVaultKey(vk, mek);
+  const wrappedVK_byRK = await wrapVaultKey(vk, rk);
+
+  return { kdfParams, wrappedVK_byMEK, wrappedVK_byRK, recoveryCode };
+}
+
 /** 用主密碼解鎖：派生 MEK → unwrap VK */
 export async function unlockWithMasterPassword(
   masterPassword: string,

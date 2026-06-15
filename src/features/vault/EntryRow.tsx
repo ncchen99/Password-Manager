@@ -34,7 +34,7 @@ export function EntryRow({ entry, onOpen }: Props) {
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-base-200 touch-target"
       >
         <div
-          className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-primary/10 text-sm font-semibold uppercase text-primary"
+          className="flex h-10 w-10 flex-none items-center justify-center bg-base-300 text-sm font-semibold uppercase text-base-content/70"
           aria-hidden
         >
           {entry.service.slice(0, 2)}

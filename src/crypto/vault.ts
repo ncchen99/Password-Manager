@@ -15,6 +15,7 @@ const IV_LENGTH = 12;
 export async function encryptEntry(
   entry: ServiceEntry,
   vk: CryptoKey,
+  rev = 1,
 ): Promise<EncryptedEntry> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
   const plaintext = utf8ToBytes(JSON.stringify(entry));
@@ -27,7 +28,7 @@ export async function encryptEntry(
     id: entry.id,
     ciphertext: bytesToBase64(new Uint8Array(ct)),
     iv: bytesToBase64(iv),
-    rev: 1,
+    rev,
     updatedAt: entry.updatedAt,
   };
 }

@@ -57,7 +57,7 @@ export function RecoveryKitModal() {
         </p>
       </div>
 
-      <div className="my-5 select-all rounded-xl border border-base-300 bg-base-200 p-4 text-center font-mono text-base tracking-widest">
+      <div className="my-5 select-all border border-base-300 bg-base-200 p-4 text-center font-mono text-base tracking-widest">
         {code}
       </div>
 

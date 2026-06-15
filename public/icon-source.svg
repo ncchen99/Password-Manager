@@ -1,0 +1,11 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- 全幅背景（maskable 安全：無透明圓角，由平台自行裁切） -->
+  <rect width="512" height="512" fill="#44403c"/>
+  <!-- 盾牌 + 勾選：沿用 favicon 造型，置中於安全區內 -->
+  <g transform="scale(21.3333)">
+    <path d="M12 4l6 2.5v4.2c0 3.8-2.6 7.2-6 8.3-3.4-1.1-6-4.5-6-8.3V6.5L12 4z"
+          fill="#f5f5f4" fill-opacity="0.97"/>
+    <path d="M9.2 12.2l1.9 1.9 3.7-3.9" stroke="#44403c" stroke-width="1.6"
+          stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>

@@ -1,19 +1,23 @@
 import { useEffect } from 'react';
 import { useVaultStore } from '@/store/vaultStore';
+import { useAuthStore } from '@/store/authStore';
 import { useTheme } from './useTheme';
 import { CreateVault } from '@/features/auth/CreateVault';
 import { UnlockVault } from '@/features/auth/UnlockVault';
 import { RecoveryKitModal } from '@/features/auth/RecoveryKitModal';
 import { VaultPage } from '@/features/vault/VaultPage';
+import { InstallPrompt } from '@/features/pwa/InstallPrompt';
 
 export function App() {
   const status = useVaultStore((s) => s.status);
   const init = useVaultStore((s) => s.init);
+  const authInit = useAuthStore((s) => s.init);
   useTheme(); // 套用主題
 
   useEffect(() => {
     void init();
-  }, [init]);
+    authInit(); // 訂閱登入狀態（未設定 Firebase 時為 no-op）
+  }, [init, authInit]);
 
   return (
     <>
@@ -28,6 +32,9 @@ export function App() {
 
       {/* 建立金庫後一次性顯示復原碼 */}
       <RecoveryKitModal />
+
+      {/* PWA 安裝橫幅（可安裝時才出現） */}
+      <InstallPrompt />
     </>
   );
 }

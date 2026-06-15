@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { LockClosedIcon } from '@heroicons/react/24/solid';
 import { useVaultStore } from '@/store/vaultStore';
+import { ForgotPassword } from './ForgotPassword';
 
 export function UnlockVault() {
   const unlock = useVaultStore((s) => s.unlock);
   const error = useVaultStore((s) => s.error);
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,7 +57,17 @@ export function UnlockVault() {
         >
           {busy ? <span className="loading loading-spinner" /> : '解鎖'}
         </button>
+
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm w-full"
+          onClick={() => setForgotOpen(true)}
+        >
+          忘記主密碼？
+        </button>
       </form>
+
+      <ForgotPassword open={forgotOpen} onClose={() => setForgotOpen(false)} />
     </div>
   );
 }

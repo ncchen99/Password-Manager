@@ -106,7 +106,7 @@ export function EntryForm({ open, initial, onClose, onSave, onDelete }: Props) {
         <div className="divider text-xs text-base-content/50">帳密</div>
 
         {creds.map((c, i) => (
-          <div key={c.id} className="space-y-2 rounded-xl bg-base-200 p-3">
+          <div key={c.id} className="space-y-2 bg-base-200 p-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-base-content/60">
                 帳密 {i + 1}

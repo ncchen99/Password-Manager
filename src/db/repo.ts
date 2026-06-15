@@ -39,8 +39,36 @@ export async function listEncryptedEntries(): Promise<EncryptedEntry[]> {
   return db.entries.orderBy('updatedAt').reverse().toArray();
 }
 
+export async function getEncryptedEntry(
+  id: string,
+): Promise<EncryptedEntry | undefined> {
+  return db.entries.get(id);
+}
+
+/** 取得某條目的下一個 rev（現有 rev + 1，新條目為 1） */
+export async function nextRev(id: string): Promise<number> {
+  const existing = await db.entries.get(id);
+  return (existing?.rev ?? 0) + 1;
+}
+
 export async function putEncryptedEntry(record: EncryptedEntry): Promise<void> {
   await db.entries.put(record);
+}
+
+export async function bulkPutEncrypted(
+  records: EncryptedEntry[],
+): Promise<void> {
+  await db.entries.bulkPut(records);
+}
+
+/** 覆寫本機 meta（換主密碼 / 復原 / 從遠端合併後使用） */
+export async function replaceMeta(meta: VaultMeta): Promise<void> {
+  await db.meta.put(meta);
+}
+
+/** 設定整體版本號 vaultRev（主密碼變更時遞增） */
+export async function setVaultRev(vaultRev: number): Promise<void> {
+  await db.meta.update('self', { vaultRev, updatedAt: Date.now() });
 }
 
 export async function deleteEntry(id: string): Promise<void> {

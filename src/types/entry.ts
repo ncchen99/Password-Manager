@@ -27,4 +27,9 @@ export interface EncryptedEntry {
   rev: number;
   updatedAt: number;
   conflictOf?: string;
+  /**
+   * 本機專用：上次成功與遠端同步時的 rev。用於三方合併偵測「雙方併發修改」。
+   * 絕不上傳（remote 序列化時會剝除，且不在 Firestore 欄位白名單內）。
+   */
+  baseRev?: number;
 }

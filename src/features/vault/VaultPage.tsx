@@ -15,6 +15,7 @@ import { useTheme } from '@/app/useTheme';
 import { EntryRow } from './EntryRow';
 import { EntryForm } from './EntryForm';
 import { ImportPage } from '@/features/import/ImportPage';
+import { SyncControls } from '@/features/sync/SyncControls';
 
 export function VaultPage() {
   const entries = useVaultStore((s) => s.entries);
@@ -49,6 +50,7 @@ export function VaultPage() {
       <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur">
         <ShieldCheckIcon className="h-6 w-6 text-primary" />
         <h1 className="flex-1 text-lg font-bold">SafeVault</h1>
+        <SyncControls />
         <button
           className="btn btn-ghost btn-sm btn-circle touch-target"
           onClick={toggle}
@@ -76,7 +78,7 @@ export function VaultPage() {
           <input
             type="search"
             className="grow"
-            placeholder="搜尋服務（臉書 / FB / Facebook）"
+            placeholder="搜尋服務（臉書 / FB / 網銀 / 串流…）"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="搜尋"
@@ -97,35 +99,42 @@ export function VaultPage() {
         )}
       </main>
 
-      {/* 底部固定動作列（單手可及） */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-2xl border-t border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.75rem)' }}
+      {/* 底部固定動作列：一條橫切兩半，左匯入 / 右新增（無內距、填滿） */}
+      <nav
+        className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-2xl border-t border-base-300 bg-base-100/95 backdrop-blur"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="flex gap-3">
+        <div className="grid grid-cols-2 divide-x divide-base-300">
           <button
-            className="btn btn-outline flex-1 touch-target"
+            className="btn btn-ghost h-14 gap-2 touch-target"
             onClick={() => setImportOpen(true)}
             title="智慧匯入"
           >
             <ArrowDownOnSquareIcon className="h-5 w-5" />
             匯入
           </button>
-          <button className="btn btn-primary flex-1 touch-target" onClick={openNew}>
+          <button
+            className="btn btn-ghost h-14 gap-2 font-semibold touch-target"
+            onClick={openNew}
+          >
             <PlusIcon className="h-5 w-5" />
             新增
           </button>
         </div>
       </nav>
 
-      <EntryForm
-        open={formOpen}
-        initial={editing}
-        onClose={() => setFormOpen(false)}
-        onSave={saveEntry}
-        onDelete={removeEntry}
-      />
+      {/* 開啟時才掛載，確保每次開啟都是乾淨的表單狀態（含切換編輯對象） */}
+      {formOpen && (
+        <EntryForm
+          open
+          initial={editing}
+          onClose={() => setFormOpen(false)}
+          onSave={saveEntry}
+          onDelete={removeEntry}
+        />
+      )}
 
-      <ImportPage open={importOpen} onClose={() => setImportOpen(false)} />
+      {importOpen && <ImportPage open onClose={() => setImportOpen(false)} />}
     </div>
   );
 }
@@ -144,7 +153,7 @@ function EmptyState({
         {hasEntries ? '找不到符合的條目' : '金庫是空的，新增第一筆密碼吧'}
       </p>
       {!hasEntries && (
-        <button className="btn btn-primary mt-4 touch-target" onClick={onAdd}>
+        <button className="btn btn-ghost mt-4 touch-target" onClick={onAdd}>
           <PlusIcon className="h-5 w-5" />
           新增條目
         </button>

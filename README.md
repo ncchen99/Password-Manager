@@ -37,11 +37,13 @@ npm run emulators  # Firebase Emulator Suite（M3）
 
 - [x] **M1** 專案骨架 + 本地 MVP：加密儲存、手動條目、別名+模糊搜尋、分割線清單 UI、深淺色、復原碼
 - [x] **M2** 智慧匯入解析管線（normalization → segment → FSM → 評分 → 逐張確認卡片，全程本機）
-- [ ] **M3** E2EE Firestore 同步 + Security Rules + 忘記主密碼流程
-- [ ] **M4** 語意搜尋（小型 embedding，可選）
-- [ ] **M5** a11y / 效能 / 離線 / 安裝體驗打磨
+- [x] **M3** E2EE Firestore 同步（rev/baseRev 三方合併 + conflictOf 衝突副本）+ Security Rules + 忘記主密碼流程（復原碼重設、舊碼失效）
+- [x] **M4** 語意搜尋：多語概念字典（網銀 ≈ online banking）融合 lexical，零網路、可離線
+- [x] **M5** a11y / 離線 / 安裝打磨：PWA 圖示、InstallPrompt、reduced-motion、focus ring、theme-color 一致
 
 ## 待補
 
-- `public/pwa-192x192.png`、`pwa-512x512.png`、`apple-touch-icon.png`（manifest 引用，需設計圖示資產）
-- Firebase 專案 ID 與 `.env`（複製 `.env.example`）
+- CI（lint + test + build）— 可選
+- Firestore Rules 測試 / Emulator 端對端：需 Java 執行環境啟動 Firestore Emulator
+  （`npm i -D @firebase/rules-unit-testing` 後 `firebase emulators:exec --only firestore "RUN_RULES_TESTS=true npx vitest run src/sync/rules.test.ts"`）
+- 正式雲端同步：將 `.env` 的 `VITE_USE_EMULATORS` 改為 `false`
