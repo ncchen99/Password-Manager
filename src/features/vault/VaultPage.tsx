@@ -368,7 +368,7 @@ function EmptyState({
   onImport: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center px-2 py-16 text-center md:items-start md:text-left">
+    <div className="flex flex-col items-center justify-center px-2 py-16 text-center">
       <ShieldCheckIcon className="mb-4 h-14 w-14 text-base-content/20" />
       <p className="text-base-content/60">
         {hasEntries ? '找不到符合的條目' : '金庫是空的，從這裡開始吧'}
