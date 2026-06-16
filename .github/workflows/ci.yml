@@ -18,3 +18,31 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+
+  deploy:
+    name: Deploy to Firebase Hosting
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Bypass the subdirectory restriction in Firebase Hosting deploy
+      - name: Prepare Hosting assets
+        run: |
+          cp -R dist firebase/dist
+          sed -i 's/"public": "..\/dist"/"public": "dist"/g' firebase/firebase.json
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SAFE_VAULT_DC4CF }}
+          projectId: safe-vault-dc4cf
+          entryPoint: firebase
