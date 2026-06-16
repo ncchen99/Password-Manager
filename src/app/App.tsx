@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useVaultStore } from '@/store/vaultStore';
 import { useAuthStore } from '@/store/authStore';
 import { useTheme } from './useTheme';
+import { useAppHeight } from './useAppHeight';
 import { SetupFlow } from '@/features/onboarding/SetupFlow';
 import { UnlockVault } from '@/features/auth/UnlockVault';
 import { RecoveryKitModal } from '@/features/auth/RecoveryKitModal';
@@ -16,6 +17,7 @@ export function App() {
   const init = useVaultStore((s) => s.init);
   const authInit = useAuthStore((s) => s.init);
   useTheme(); // 套用主題
+  useAppHeight(); // 量測實際可視高度寫入 --app-height
 
   useEffect(() => {
     void init();
@@ -25,7 +27,7 @@ export function App() {
   return (
     <>
       {status === 'loading' && (
-        <div className="flex min-h-dvh items-center justify-center">
+        <div className="flex min-h-[var(--app-height)] items-center justify-center">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       )}

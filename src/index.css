@@ -4,6 +4,8 @@
 
 :root {
   color-scheme: light dark;
+  /* 由 useAppHeight 以 JS 量測的實際可視高度覆寫；100dvh 僅為 JS 載入前的後備值。 */
+  --app-height: 100dvh;
 }
 
 html {

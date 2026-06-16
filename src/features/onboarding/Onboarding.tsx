@@ -92,7 +92,7 @@ export function Onboarding({ onDone }: Props) {
   const { Icon } = slide;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
+    <div className="mx-auto flex min-h-[var(--app-height)] max-w-md flex-col px-6 py-10">
       {/* 略過 */}
       <div className="flex justify-end">
         <button
