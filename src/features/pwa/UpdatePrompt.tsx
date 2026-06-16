@@ -15,27 +15,31 @@ export function UpdatePrompt() {
   if (!needRefresh) return null;
 
   return (
+    // 外層滿版：背景與邊框延伸到整個畫面寬（桌面也看起來像完整橫幅）。
+    // 手機上往上墊一個底部導覽列的高度（h-14 = 3.5rem + 安全區），避免蓋住導覽列；
+    // md 以上沒有底部導覽列，貼齊畫面底部即可。
     <div
       role="dialog"
       aria-label="有新版本可更新"
-      className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-w-2xl items-center gap-3 border-t border-base-300 bg-base-100/95 px-4 py-2 backdrop-blur"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
+      className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)_+_3.5rem)] z-50 border-t border-base-300 bg-base-100/95 backdrop-blur md:bottom-0"
     >
-      <ArrowPathIcon className="h-5 w-5 shrink-0 text-primary" />
-      <p className="flex-1 text-sm">有新版本可用，更新後重新載入以套用。</p>
-      <button
-        className="btn btn-primary btn-sm touch-target"
-        onClick={() => void updateServiceWorker(true)}
-      >
-        更新
-      </button>
-      <button
-        className="btn btn-ghost btn-sm btn-circle touch-target"
-        onClick={() => setNeedRefresh(false)}
-        aria-label="稍後再更新"
-      >
-        <XMarkIcon className="h-5 w-5" />
-      </button>
+      <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-2 md:pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]">
+        <ArrowPathIcon className="h-5 w-5 shrink-0 text-primary" />
+        <p className="flex-1 text-sm">有新版本可用，更新後重新載入以套用。</p>
+        <button
+          className="btn btn-primary btn-sm touch-target"
+          onClick={() => void updateServiceWorker(true)}
+        >
+          更新
+        </button>
+        <button
+          className="btn btn-ghost btn-sm btn-circle touch-target"
+          onClick={() => setNeedRefresh(false)}
+          aria-label="稍後再更新"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
+      </div>
     </div>
   );
 }
