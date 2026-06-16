@@ -78,15 +78,15 @@ export function ProfilePage({ onBack }: Props) {
   return (
     <div className="flex flex-1 flex-col">
       {/* 頁首：返回 + 標題 */}
-      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-base-300 bg-base-100/95 px-2 py-2 backdrop-blur">
         <button
-          className="btn btn-ghost btn-sm btn-circle touch-target"
+          className="btn btn-ghost btn-sm btn-square touch-target"
           onClick={onBack}
           aria-label="返回"
         >
-          <ArrowLeftIcon className="h-5 w-5" />
+          <ArrowLeftIcon className="h-6 w-6" />
         </button>
-        <h1 className="text-lg font-bold">個人設定</h1>
+        <h1 className="text-base font-semibold">個人設定</h1>
       </header>
 
       <div className="mx-auto w-full max-w-2xl space-y-8 px-4 py-6 md:mx-0 md:px-6">

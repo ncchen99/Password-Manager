@@ -114,21 +114,21 @@ export function VaultPage() {
           {/* 清單欄：桌面固定較窄寬度，留出右側給明細 */}
           <div className="flex min-w-0 flex-1 flex-col lg:flex-[3] lg:border-r lg:border-base-300">
             {/* 手機頂部列（桌面/平板由側邊欄取代）：左邊 Brand，右邊主題切換與頭像 */}
-            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur md:hidden">
-              <div className="flex items-center gap-2">
+            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-base-300 bg-base-100/95 px-2 py-2 backdrop-blur md:hidden">
+              <div className="flex items-center gap-2 pl-2">
                 <ShieldCheckIcon className="h-6 w-6 text-primary" />
-                <h1 className="text-lg font-bold">SafeVault</h1>
+                <h1 className="text-base font-semibold">SafeVault</h1>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="btn btn-ghost btn-sm btn-circle touch-target"
+                  className="btn btn-ghost btn-sm btn-square touch-target"
                   onClick={toggle}
                   aria-label={mode === 'dark' ? '切換淺色' : '切換深色'}
                 >
                   {mode === 'dark' ? (
-                    <SunIcon className="h-5 w-5" />
+                    <SunIcon className="h-6 w-6" />
                   ) : (
-                    <MoonIcon className="h-5 w-5" />
+                    <MoonIcon className="h-6 w-6" />
                   )}
                 </button>
                 <Avatar onClick={() => setView('profile')} />
@@ -314,7 +314,7 @@ function Overview({ entries }: { entries: ServiceEntry[] }) {
 
   return (
     <div className="flex h-full flex-col py-8">
-      <div className="flex w-full max-w-md flex-1 flex-col gap-6 px-8">
+      <div className="flex w-full flex-1 flex-col gap-6 px-8">
         <div className="text-base-content/40">
           <ShieldCheckIcon className="mb-3 h-10 w-10" />
           <p className="text-sm">選擇左側項目即可在此檢視帳號與密碼。</p>
