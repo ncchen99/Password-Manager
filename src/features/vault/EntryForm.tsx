@@ -156,7 +156,7 @@ export function EntryForm({ open, initial, onClose, onSave, onDelete }: Props) {
             />
             <button
               type="button"
-              className="btn btn-ghost btn-xs btn-circle absolute right-1 top-1/2 -translate-y-1/2"
+              className="btn btn-ghost btn-xs btn-circle absolute right-1 inset-y-0 my-auto"
               onClick={() => setShowPw((v) => !v)}
               aria-label={showPw ? '隱藏密碼' : '顯示密碼'}
             >
@@ -187,7 +187,7 @@ export function EntryForm({ open, initial, onClose, onSave, onDelete }: Props) {
               {f.secret && (
                 <button
                   type="button"
-                  className="btn btn-ghost btn-xs btn-circle absolute right-0.5 top-1/2 -translate-y-1/2"
+                  className="btn btn-ghost btn-xs btn-circle absolute right-0.5 inset-y-0 my-auto"
                   onClick={() => setReveal((s) => ({ ...s, [f.id]: !s[f.id] }))}
                   aria-label={reveal[f.id] ? '隱藏' : '顯示'}
                 >

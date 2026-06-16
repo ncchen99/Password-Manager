@@ -6,9 +6,11 @@ import { toast } from '@/store/toastStore';
 interface Props {
   entry: ServiceEntry;
   onOpen: (entry: ServiceEntry) => void;
+  /** 桌面明細視圖中目前選取的列 → 加上選取底色。 */
+  selected?: boolean;
 }
 
-export function EntryRow({ entry, onOpen }: Props) {
+export function EntryRow({ entry, onOpen, selected = false }: Props) {
   const primary = entry.credentials[0];
   const usernamePreview = primary?.username;
   const hasPassword = Boolean(primary?.password);
@@ -31,7 +33,11 @@ export function EntryRow({ entry, onOpen }: Props) {
   }
 
   return (
-    <li className="flex items-center transition-colors hover:bg-base-200">
+    <li
+      className={`flex items-center transition-colors hover:bg-base-200 ${
+        selected ? 'bg-base-200' : ''
+      }`}
+    >
       {/* 點整列 → 複製密碼（無密碼則複製帳號） */}
       <button
         type="button"

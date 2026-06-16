@@ -10,7 +10,7 @@ import { newId } from '@/lib/id';
 import { normalize } from '@/search/normalize';
 import { canonicalServiceName } from '@/icons/match';
 import { canonicalize } from './canonicalize';
-import { segment } from './segment';
+import { segment, splitCredentials } from './segment';
 import { parseBlock } from './fsm';
 import { scoreCandidate } from './score';
 
@@ -27,7 +27,9 @@ export function parseImport(
   const dupIndex = buildDuplicateIndex(existing);
   const candidates: ImportCandidate[] = [];
 
-  for (const block of segment(text)) {
+  // segment 切出每筆；splitCredentials 再把「同服務多組帳密」拆成各自一筆。
+  const blocks = segment(text).flatMap(splitCredentials);
+  for (const block of blocks) {
     const { fields, confidence } = parseBlock(block);
     // 完全空白的區塊略過
     if (Object.keys(fields).length === 0) continue;
@@ -76,6 +78,9 @@ export function candidateToEntry(c: ImportCandidate): ServiceEntry {
   const name = canon?.name ?? raw;
   const aliases = canon && canon.name !== raw ? [raw] : [];
 
+  // 服務名夾帶的使用者標記（如 Fb黏誠 → 黏誠）移入備註，標明此帳號屬於哪位使用者。
+  const noteVal = [canon?.descriptor, note?.trim()].filter(Boolean).join('\n') || undefined;
+
   const custom: CustomField[] | undefined = fields?.length
     ? fields.map((f) => ({
         id: newId(),
@@ -97,7 +102,7 @@ export function candidateToEntry(c: ImportCandidate): ServiceEntry {
         username: username?.trim() || undefined,
         password: password || undefined,
         otp: otp?.trim() || undefined,
-        note: note?.trim() || undefined,
+        note: noteVal,
         fields: custom,
       },
     ],

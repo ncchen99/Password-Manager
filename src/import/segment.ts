@@ -84,3 +84,51 @@ function isBlockStarter(line: string): boolean {
   if (!label && isUrl(value)) return true;
   return false;
 }
+
+/** 一行若是明確標籤的 username/password，回傳其欄位鍵；否則 undefined。 */
+function credLabelKey(line: string): 'username' | 'password' | undefined {
+  const { label } = splitLabeled(line);
+  if (!label) return undefined;
+  const f = labelToField(label);
+  return f === 'username' || f === 'password' ? f : undefined;
+}
+
+/**
+ * 同一服務多組帳密的拆分：一個區塊內若出現重複的 acc/pwd 配對
+ * （如 protonVPn 兩組、windscribe 三組），拆成多個子區塊——每組各自成一筆，
+ * 並把共用的標頭行（服務名、網址等）複製到每一筆前面。
+ *
+ * 只在偵測到「明確標籤」的 username/password 重複時才拆；無標籤的裸值區塊
+ * （email↵密碼）不拆，避免誤判。未偵測到多組時原樣回傳單一區塊。
+ */
+export function splitCredentials(block: string): string[] {
+  const lines = toLines(block);
+  const header: string[] = [];
+  const groups: string[][] = [];
+  let current: string[] | null = null;
+  let seen = new Set<'username' | 'password'>();
+
+  for (const line of lines) {
+    const key = credLabelKey(line);
+    if (key) {
+      if (current === null) {
+        current = [];
+      } else if (seen.has(key)) {
+        // 同一欄位鍵重複出現 → 視為新一組的開始
+        groups.push(current);
+        current = [];
+        seen = new Set();
+      }
+      current.push(line);
+      seen.add(key);
+    } else if (current === null) {
+      header.push(line); // 第一組帳密之前的行 → 共用標頭
+    } else {
+      current.push(line); // 帳密之後的附屬行（otp/note 等）歸入當前組
+    }
+  }
+  if (current) groups.push(current);
+
+  if (groups.length <= 1) return [block];
+  return groups.map((g) => [...header, ...g].join('\n'));
+}

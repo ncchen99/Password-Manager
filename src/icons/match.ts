@@ -163,12 +163,40 @@ export function matchConcept(entry: ServiceEntry): string | null {
 }
 
 /**
+ * 從服務名中抽出「品牌字以外的描述詞」（僅限含中文者）。
+ * 例：「Fb黏誠」→「黏誠」、「臉書念誠」→「念誠」、「FB」→ undefined。
+ * 用途：把這段「哪一個使用者」的標記移到備註，服務名只留官方品牌。
+ */
+function brandDescriptor(raw: string, slug: string): string | undefined {
+  // 蒐集所有對應到此 slug 的可見字：slug、品牌 title、別名鍵。
+  const keys = [slug];
+  const brand = BY_SLUG.get(slug);
+  if (brand?.title) keys.push(brand.title);
+  for (const [k, v] of Object.entries(ALIAS)) if (v === slug) keys.push(k);
+  keys.sort((a, b) => b.length - a.length); // 先剝最長者，避免 fb 先吃掉 facebook
+
+  const lower = raw.toLowerCase();
+  let rest = raw;
+  for (const k of keys) {
+    const idx = lower.indexOf(k.toLowerCase());
+    if (idx >= 0) {
+      rest = raw.slice(0, idx) + raw.slice(idx + k.length);
+      break;
+    }
+  }
+  const cleaned = rest.replace(/^[\s:：_．.\-]+|[\s:：_．.\-]+$/g, '').trim();
+  // 僅當剩餘含中文時才視為「使用者標記」，避免把網域 TLD（.com）誤當描述詞。
+  return cleaned && /[一-鿿]/.test(cleaned) ? cleaned : undefined;
+}
+
+/**
  * 服務名稱正規化：FB / 臉書 / facebook.com → 官方品牌名「Facebook」。
  * 重用品牌比對；命中則回官方 title 與 slug，否則 null（保留使用者原輸入）。
+ * descriptor：服務名中夾帶的中文使用者標記（如 Fb黏誠 → 黏誠），供呼叫端移入備註。
  */
 export function canonicalServiceName(
   input: string,
-): { name: string; slug: string } | null {
+): { name: string; slug: string; descriptor?: string } | null {
   const raw = input.trim();
   if (!raw) return null;
   const slug = matchBrandSlug({
@@ -181,11 +209,12 @@ export function canonicalServiceName(
     updatedAt: 0,
   });
   if (!slug) return null;
+  const descriptor = brandDescriptor(raw, slug);
   // 同帳號群組優先（Gmail → Google 帳號、App Store → Apple ID…）
   const group = SLUG_TO_GROUP.get(slug);
-  if (group) return { name: group, slug };
+  if (group) return { name: group, slug, descriptor };
   const brand = BY_SLUG.get(slug);
-  return brand ? { name: brand.title, slug } : null;
+  return brand ? { name: brand.title, slug, descriptor } : null;
 }
 
 export { BY_SLUG };

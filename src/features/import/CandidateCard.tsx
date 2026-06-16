@@ -107,7 +107,7 @@ export function CandidateCard({ candidate, included, onToggle, onChange }: Props
                 {isPw && value && (
                   <button
                     type="button"
-                    className="btn btn-ghost btn-xs btn-circle absolute right-1 top-1/2 -translate-y-1/2"
+                    className="btn btn-ghost btn-xs btn-circle absolute right-1 inset-y-0 my-auto"
                     onClick={() => setShowPw((s) => !s)}
                     aria-label={showPw ? '隱藏密碼' : '顯示密碼'}
                   >

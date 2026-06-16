@@ -167,3 +167,148 @@ describe('彈性自訂欄位解析（真實雜亂資料）', () => {
     expect(entry.credentials[0].fields?.some((x) => x.label === '理財密碼' && x.value === '1234')).toBe(true);
   });
 });
+
+describe('記事本雜亂格式（acc/pwd、末尾冒號、跨行、多組帳密）', () => {
+  it('acc/pwd 縮寫標籤歸位到帳號/密碼', () => {
+    const text = ['twitch', 'acc: brtb4343rf', 'pwd: erbverb@@bre@'].join('\n');
+    const [c] = parseImport(text);
+    expect(c.fields.service).toBe('twitch');
+    expect(c.fields.username).toBe('brtb4343rf');
+    expect(c.fields.password).toBe('erbverb@@bre@');
+  });
+
+  it('PWD: 標籤獨佔一行、值在下一行（末尾冒號）', () => {
+    const text = ['Jandi', 'Account: nergojfg@gmail.com', 'PWD:', 'rgergerg43'].join('\n');
+    const [c] = parseImport(text);
+    expect(c.fields.username).toBe('nergojfg@gmail.com');
+    expect(c.fields.password).toBe('rgergerg43');
+  });
+
+  it('服務名末尾全形冒號被去除（windscribe：）', () => {
+    const text = ['windscribe：', 'acc: reregreg', 'pwd: ergre'].join('\n');
+    const [c] = parseImport(text);
+    expect(c.fields.service).toBe('windscribe');
+  });
+
+  it('第一行含冒號且非已知標籤 → 整行留作服務名（valine : leanCloud）', () => {
+    const text = ['valine : leanCloud', 'acc: greger44@gmail.com', 'pwd: Aergrerg'].join('\n');
+    const [c] = parseImport(text);
+    expect(c.fields.service).toContain('valine');
+    expect(c.fields.service).toContain('leanCloud');
+    expect(c.fields.username).toBe('greger44@gmail.com');
+    expect(c.fields.password).toBe('Aergrerg');
+    // 不應誤建成自訂欄位
+    expect(c.fields.fields?.some((x) => x.label === 'valine')).toBeFalsy();
+  });
+
+  it('同服務多組 acc/pwd → 拆成多筆，共用服務名', () => {
+    const text = [
+      'protonVPn',
+      'acc: eihrreibnvbire',
+      'pwd: fgrgrr',
+      'acc: efrgregw3',
+      'pwd: regergerg',
+    ].join('\n');
+    const cands = parseImport(text);
+    expect(cands).toHaveLength(2);
+    expect(cands[0].fields.service).toBe('protonVPn');
+    expect(cands[1].fields.service).toBe('protonVPn');
+    expect(cands[0].fields.username).toBe('eihrreibnvbire');
+    expect(cands[0].fields.password).toBe('fgrgrr');
+    expect(cands[1].fields.username).toBe('efrgregw3');
+    expect(cands[1].fields.password).toBe('regergerg');
+  });
+
+  it('三組帳密一樣逐組拆分（windscribe）', () => {
+    const text = [
+      'windscribe：',
+      'acc: reregreg',
+      'pwd: ergre',
+      'acc: gre',
+      'pwd: ergergre',
+      'acc: ergrg43434',
+      'pwd: 4gerber',
+    ].join('\n');
+    const cands = parseImport(text);
+    expect(cands).toHaveLength(3);
+    expect(cands.every((c) => c.fields.service === 'windscribe')).toBe(true);
+    expect(cands[2].fields.username).toBe('ergrg43434');
+    expect(cands[2].fields.password).toBe('4gerber');
+  });
+
+  it('無標籤的 email↵密碼 區塊不誤拆', () => {
+    const text = ['Fb黏誠', 'bverbr@slowimo.com', 'brgw34vr'].join('\n');
+    const cands = parseImport(text);
+    expect(cands).toHaveLength(1);
+    expect(cands[0].fields.username).toBe('bverbr@slowimo.com');
+    expect(cands[0].fields.password).toBe('brgw34vr');
+  });
+});
+
+describe('純位置序列與弱密碼（服務名↵ID↵密碼）', () => {
+  it('Puma：電話作帳號、弱密碼也能補上', () => {
+    const [c] = parseImport(['Puma', '093243330', 'wefewefefew'].join('\n'));
+    expect(c.fields.service).toBe('Puma');
+    expect(c.fields.username).toBe('093243330');
+    expect(c.fields.password).toBe('wefewefefew');
+  });
+
+  it('1111 人力銀行：身分證字號作帳號、弱密碼作密碼', () => {
+    const [c] = parseImport(['1111 人力銀行', 'B1323432', 'fbgfbgfbg'].join('\n'));
+    expect(c.fields.service).toBe('1111 人力銀行');
+    expect(c.fields.username).toBe('B1323432');
+    expect(c.fields.password).toBe('fbgfbgfbg');
+  });
+
+  it('iCash：服務名↵ID↵數字密碼', () => {
+    const [c] = parseImport(['I cash (line)', 'gfdgg344', '343433'].join('\n'));
+    expect(c.fields.service).toBe('I cash (line)');
+    expect(c.fields.username).toBe('gfdgg344');
+    expect(c.fields.password).toBe('343433');
+  });
+
+  it('中文標籤緊貼值、無分隔符（代號f73244365 / 密碼3245tfh69）', () => {
+    const text = [
+      '永豐帳號',
+      'nccefw9@gmail.com',
+      '090643240',
+      '代號f73244365',
+      '密碼3245tfh69',
+      '理財密碼 2953',
+    ].join('\n');
+    const [c] = parseImport(text);
+    expect(c.fields.service).toBe('永豐帳號');
+    expect(c.fields.username).toBe('nccefw9@gmail.com');
+    expect(c.fields.password).toBe('3245tfh69');
+    const f = c.fields.fields ?? [];
+    expect(f.find((x) => x.label === '代號')?.value).toBe('f73244365');
+    expect(f.find((x) => x.label === '理財密碼')?.value).toBe('2953');
+    expect(f.find((x) => x.label === '電話')?.value).toBe('090643240');
+  });
+
+  it('片語標籤的清單值收集（Recovery code 多行）', () => {
+    const text = [
+      'Gitlab',
+      'nc9ewfew9@gmail.com',
+      'f;8$-wefewf.+K7T7W',
+      'Recovery code:',
+      'd33c0ec28684669a',
+      'a282ee02d9df9c3a',
+      '1a2741b1c1a4d1ca',
+    ].join('\n');
+    const [c] = parseImport(text);
+    expect(c.fields.service).toBe('Gitlab');
+    expect(c.fields.username).toBe('nc9ewfew9@gmail.com');
+    expect(c.fields.password).toBe('f;8$-wefewf.+K7T7W');
+    const rec = (c.fields.fields ?? []).find((x) => /recovery/i.test(x.label));
+    expect(rec?.value.split('\n')).toHaveLength(3);
+    expect(rec?.secret).toBe(true);
+  });
+
+  it('FB 後綴使用者標記移入備註，服務名只留 Facebook', () => {
+    const [c] = parseImport(['Fb黏誠', 'bverbr@slowimo.com', 'brgw34vr'].join('\n'));
+    const entry = candidateToEntry(c);
+    expect(entry.service).toBe('Facebook');
+    expect(entry.credentials[0].note).toContain('黏誠');
+  });
+});

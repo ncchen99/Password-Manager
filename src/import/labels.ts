@@ -12,7 +12,7 @@ function register(field: FieldKey, labels: string[]) {
 
 register('service', ['service', 'site', 'name', 'app', '服務', '網站', '名稱', '平台', '應用']);
 register('username', [
-  'username', 'user', 'user name', 'login', 'account', 'acct', 'id', 'email', 'e-mail', 'mail',
+  'username', 'user', 'usr', 'user name', 'login', 'account', 'acct', 'acc', 'id', 'email', 'e-mail', 'mail',
   '帳號', '帳戶', '使用者', '使用者名稱', '用戶', '用戶名', '登入', '信箱', '電子郵件', '郵箱',
 ]);
 register('password', [

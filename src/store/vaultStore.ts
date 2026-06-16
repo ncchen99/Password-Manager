@@ -436,6 +436,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       vk,
       entries,
       status: 'unlocked',
+      hasMasterPassword: true, // 免密碼金庫設定主密碼後 → 標記為已設定
       lastRecoveryCode: keyset.recoveryCode,
     });
   },

@@ -6,17 +6,24 @@
   color-scheme: light dark;
 }
 
-html,
-body,
-#root {
+html {
   height: 100%;
 }
 
+/*
+ * 用 min-height 取代 height:100%，讓 body 隨內容增長；
+ * 否則 body 固定為視窗高度，往下捲動時超出區域露出空白底色（背景無法填滿整頁）。
+ */
 body {
+  min-height: 100%;
   @apply bg-base-200 text-base-content antialiased;
   /* iOS 安全區域 */
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+#root {
+  min-height: 100%;
 }
 
 /* 尊重使用者的動效偏好 */

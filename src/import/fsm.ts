@@ -34,16 +34,49 @@ interface Row {
 }
 
 /** 自訂標籤欄位常見後綴／關鍵字（用於判斷「像不像欄位標籤」）。 */
-const SECRET_LABEL_RE = /密碼|通行碼|碼$|pin|cvv|secret|key|token|otp|金鑰/i;
+const SECRET_LABEL_RE = /密碼|通行碼|碼$|pin|cvv|secret|key|token|otp|金鑰|recovery|備援|備用/i;
 /** 單字（無內部空白）標籤的後綴啟發。 */
 const LABEL_SUFFIX_RE = /(密碼|帳號|帳戶|代號|號碼|編號|序號|信箱|郵箱|電話|提款|卡號|金鑰)$/;
+/** 多字（含空白）標籤的後綴啟發，如「postgres database password」「Recovery code」「github account」。 */
+const PHRASE_LABEL_SUFFIX_RE = /(passwords?|passcode|passwd|pwd|account|login|secret|key|token|pin|codes?|recovery|備援碼?|備用碼?)$/i;
+/** 標籤是否屬於「一個標籤、底下多個值」的清單型（如復原碼）。 */
+const LIST_LABEL_RE = /(codes?|recovery|備援|備用)/i;
 
-/** 這一整行（單一 token）讀起來像不像「欄位標籤」。 */
+/** 去除標籤尾端的冒號（半形/全形），例如「PWD:」→「PWD」、「帳號：」→「帳號」。 */
+function stripTrailingColon(s: string): string {
+  return s.trim().replace(/[:：]\s*$/, '');
+}
+
+/** 這一整行（單一 token、無內部空白）讀起來像不像「欄位標籤」。允許尾端帶冒號（PWD:）。 */
 function isLabelToken(line: string): boolean {
-  const t = line.trim();
+  const t = stripTrailingColon(line);
   if (!t || /\s/.test(t) || t.length > 12) return false;
   if (labelToField(t)) return true;
   return LABEL_SUFFIX_RE.test(t);
+}
+
+/** 含空白的「片語標籤」（如「Recovery code」「postgres database password」）。 */
+function isPhraseLabel(line: string): boolean {
+  const t = stripTrailingColon(line);
+  if (!t || t.length > 40 || !/\s/.test(t)) return false;
+  return PHRASE_LABEL_SUFFIX_RE.test(t) || LABEL_SUFFIX_RE.test(t);
+}
+
+/** 一整行是否為「純標籤行」（單字或片語），其值在後續行。 */
+function isStandaloneLabel(line: string): boolean {
+  return isLabelToken(line) || isPhraseLabel(line);
+}
+
+/** 這個值像不像「服務名稱標頭」：不是 email/url/電話/金鑰，且形似名稱。 */
+function isServiceHeader(v: string): boolean {
+  return (
+    !isEmail(v) &&
+    !isUrl(v) &&
+    !isOtpAuth(v) &&
+    !isPhone(v) &&
+    !isBareTotpSecret(v) &&
+    isServiceLike(v)
+  );
 }
 
 /** 「標籤＋空白＋值」：第一個 token 像標籤才切。否則回 null。 */
@@ -61,29 +94,58 @@ function isSecretField(label: string, value: string): boolean {
   return passwordLikeness(value).score >= 0.5;
 }
 
-/** 把區塊行序列整理成 rows，處理三種標籤格式 + 跨行配對。 */
+/** 一行是否為「可作為某筆標籤之值」的純值行（非標籤、非 email/url/otp）。 */
+function isPlainValueLine(line: string): boolean {
+  if (isStandaloneLabel(line) || splitLabeled(line).label) return false;
+  return !isEmail(line) && !isUrl(line) && !isOtpAuth(line);
+}
+
+/** 把區塊行序列整理成 rows，處理多種標籤格式 + 跨行配對。 */
 function toRows(lines: string[]): Row[] {
   const rows: Row[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    // 1) 明確分隔符（冒號/Tab/破折號）——高可信，直接信任標籤
+    // 1) 明確分隔符（冒號/Tab/破折號）——高可信，直接信任標籤。
+    //    例外：第一行的「未命中字典」標籤（如「valine : leanCloud」）不拆，
+    //    整行留作服務名候選，避免服務名被當成自訂欄位而遺失。
     const sl = splitLabeled(line);
-    if (sl.label) {
+    if (sl.label && (labelToField(sl.label) || i > 0)) {
       rows.push({ label: sl.label, value: sl.value });
       continue;
     }
-    // 2) 標籤＋空白＋值（如「理財密碼 14242」）——啟發式，需把關
-    const lead = leadingLabel(line);
-    if (lead) {
-      rows.push({ heuristicLabel: lead.label, value: lead.value });
-      continue;
-    }
-    // 3) 標籤獨佔一行、值在下一行（如「電話下單密碼」↵「5493288」）
-    const next = lines[i + 1];
-    if (isLabelToken(line) && next && !isLabelToken(next) && !splitLabeled(next).label) {
-      rows.push({ heuristicLabel: line.trim(), value: next.trim() });
-      i++;
-      continue;
+
+    // 第一行一律保留為純值行（服務名標頭），不做啟發式標籤切割。
+    if (i > 0) {
+      // 1b) 中文標籤緊貼值、無分隔符（如「代號f73244365」「密碼3245tfh69」）
+      const glue = line.match(/^([一-鿿]{2,8})([A-Za-z0-9].*)$/);
+      if (glue && isLabelToken(glue[1])) {
+        rows.push({ heuristicLabel: glue[1], value: glue[2].trim() });
+        continue;
+      }
+      // 2) 標籤＋空白＋值（如「理財密碼 14242」）——啟發式，需把關
+      const lead = leadingLabel(line);
+      if (lead) {
+        rows.push({ heuristicLabel: lead.label, value: lead.value });
+        continue;
+      }
+      // 3) 標籤獨佔一行、值在後續行（如「電話下單密碼」↵「5493288」、「PWD:」↵「值」、
+      //    「Recovery code:」↵多行復原碼）。清單型標籤可收集多個值合併為一欄。
+      if (isStandaloneLabel(line)) {
+        const lbl = stripTrailingColon(line);
+        const listMode = LIST_LABEL_RE.test(lbl);
+        const vals: string[] = [];
+        let j = i + 1;
+        while (j < lines.length && isPlainValueLine(lines[j])) {
+          vals.push(lines[j].trim());
+          j++;
+          if (!listMode) break; // 非清單型只取下一行一個值
+        }
+        if (vals.length) {
+          rows.push({ heuristicLabel: lbl, value: vals.join('\n') });
+          i = j - 1;
+          continue;
+        }
+      }
     }
     // 4) 純值行
     rows.push({ value: line.trim() });
@@ -121,30 +183,57 @@ export function parseBlock(block: string): ParsedBlock {
     else addCustom(label, r.value);
   }
 
-  // 第二遍：無標籤 row 依內容型態判斷
-  for (const r of rows) {
-    if (r.label !== undefined || r.heuristicLabel !== undefined) continue;
-    const v = r.value.trim();
-    if (!v) continue;
+  // 第二遍：無標籤 row。先抽首行作服務名標頭，再依型態歸位 url/otp/email，
+  // 最後把剩餘未分類值「依出現順序」補上 帳號 → 密碼（符合「服務名↵ID↵密碼」直覺）。
+  const plain = rows
+    .filter((r) => r.label === undefined && r.heuristicLabel === undefined)
+    .map((r) => r.value.trim())
+    .filter(Boolean);
+
+  // 服務標頭：區塊首個純值行，且形似服務名 → service。
+  let startIdx = 0;
+  if (fields.service === undefined && plain.length && isServiceHeader(plain[0])) {
+    set('service', stripTrailingColon(plain[0]), 0.6, '區塊首行，推測為服務名稱');
+    startIdx = 1;
+  }
+
+  const phones: string[] = [];
+  const leftover: string[] = [];
+  for (let k = startIdx; k < plain.length; k++) {
+    const v = plain[k];
     if (isOtpAuth(v)) {
       set('otp', v, 0.95, 'otpauth:// URI');
     } else if (isUrl(v)) {
       set('url', normalizeUrl(v), 0.8, '看起來是網址');
     } else if (isEmail(v)) {
-      set('username', v, 0.72, 'email 格式');
+      if (fields.username === undefined) set('username', v, 0.72, 'email 格式');
+      else noteParts.push(v);
     } else if (isBareTotpSecret(v)) {
       set('otp', v.replace(/\s/g, '').toUpperCase(), 0.6, 'base32 TOTP 種子');
     } else if (isPhone(v)) {
-      addCustom('電話', v); // 電話另存為欄位，不再倒進備註
+      phones.push(v);
     } else {
-      const pw = passwordLikeness(v);
-      if (pw.score >= 0.5 && fields.password === undefined) {
-        set('password', v, Math.min(0.85, 0.4 + pw.score * 0.5), pw.reasons.join('、'));
-      } else if (fields.service === undefined && isServiceLike(v)) {
-        set('service', v, 0.6, '首個非結構化短行，推測為服務名稱');
-      } else {
-        noteParts.push(v);
-      }
+      leftover.push(v);
+    }
+  }
+
+  // 電話：尚無帳號 → 當作帳號；否則存為「電話」欄位（電話絕不當密碼）。
+  for (const p of phones) {
+    if (fields.username === undefined) set('username', p, 0.55, '電話號碼作為帳號');
+    else addCustom('電話', p);
+  }
+
+  // 其餘未分類值：明顯像密碼者優先填密碼，否則依序補 帳號 → 密碼 → 備註。
+  for (const v of leftover) {
+    const pw = passwordLikeness(v);
+    if (pw.score >= 0.6 && fields.password === undefined) {
+      set('password', v, Math.min(0.85, 0.4 + pw.score * 0.5), pw.reasons.join('、'));
+    } else if (fields.username === undefined) {
+      set('username', v, 0.45, '依出現順序推測為帳號');
+    } else if (fields.password === undefined) {
+      set('password', v, 0.45, '依出現順序推測為密碼');
+    } else {
+      noteParts.push(v);
     }
   }
 
@@ -185,7 +274,7 @@ function assignLabeled(
       set('username', value, isEmail(value) ? 0.95 : 0.88, '標籤指明帳號');
       break;
     case 'service':
-      set('service', value, 0.9, '標籤指明服務名稱');
+      set('service', stripTrailingColon(value), 0.9, '標籤指明服務名稱');
       break;
     case 'note':
       set('note', value, 0.85, '標籤指明備註');

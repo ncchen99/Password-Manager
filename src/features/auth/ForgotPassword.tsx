@@ -10,9 +10,18 @@ import { useVaultStore } from '@/store/vaultStore';
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** 標題與情境文案；用於從設定頁「設定 / 變更主密碼」重用同一流程。 */
+  title?: string;
+  /** 主要按鈕文案。 */
+  cta?: string;
 }
 
-export function ForgotPassword({ open, onClose }: Props) {
+export function ForgotPassword({
+  open,
+  onClose,
+  title = '忘記主密碼',
+  cta = '以復原碼重設並解鎖',
+}: Props) {
   const resetMasterPassword = useVaultStore((s) => s.resetMasterPassword);
   const [code, setCode] = useState('');
   const [pw, setPw] = useState('');
@@ -49,7 +58,7 @@ export function ForgotPassword({ open, onClose }: Props) {
   return (
     <ResponsiveSheet
       open={open}
-      title="忘記主密碼"
+      title={title}
       onClose={() => {
         reset();
         onClose();
@@ -121,7 +130,7 @@ export function ForgotPassword({ open, onClose }: Props) {
           ) : (
             <>
               <KeyIcon className="h-5 w-5" />
-              以復原碼重設並解鎖
+              {cta}
             </>
           )}
         </button>
