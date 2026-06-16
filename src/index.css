@@ -6,6 +6,15 @@
   color-scheme: light dark;
   /* 由 useAppHeight 以 JS 量測的實際可視高度覆寫；100dvh 僅為 JS 載入前的後備值。 */
   --app-height: 100dvh;
+  /*
+   * 上方為了避開系統狀態列而預留的高度。
+   * 預設 0（Safari / Chrome 等瀏覽器分頁不需處理，狀態列不會疊在內容上）。
+   * 只有在 iOS standalone PWA 時，由 useAppHeight 改寫成 env(safe-area-inset-top)，
+   * 讓內容往下推、不被狀態列蓋住。
+   */
+  --safe-top: 0px;
+  /* 整頁容器高度：扣掉上方預留，與 body 的 padding-top 相加恰好等於可視高度，避免溢出可捲動。 */
+  --app-content-height: calc(var(--app-height) - var(--safe-top));
 }
 
 html {
@@ -20,11 +29,13 @@ body {
   min-height: 100%;
   @apply bg-base-200 text-base-content antialiased;
   /*
-   * 只保留左右安全區域（橫向瀏海／圓角）。
-   * 上下狀態列／Home 指示條在 iOS 是疊在內容之上、整個畫面都是顯示區域，
-   * 因此不在此預留上下 padding——否則整頁容器（高度 = --app-height = 可視高度）
-   * 會被往下推，超出可視範圍而讓整個畫面可捲動。
+   * 左右保留安全區域（橫向瀏海／圓角）。
+   * 上方僅在 iOS standalone PWA 預留 --safe-top（避開狀態列）；瀏覽器分頁時為 0。
+   * 下方不留（Home 指示條疊在內容上、整個畫面都是顯示區域）。
+   * 整頁容器高度已改用 --app-content-height = 可視高度 − --safe-top，
+   * 與這裡的 padding-top 相加恰好等於可視高度，故不會溢出可捲動。
    */
+  padding-top: var(--safe-top);
   padding-right: env(safe-area-inset-right);
   padding-left: env(safe-area-inset-left);
 }

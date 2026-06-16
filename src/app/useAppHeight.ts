@@ -21,6 +21,19 @@ export function useAppHeight(): void {
       );
     };
 
+    // 只有以 standalone PWA 開啟時，才在上方預留狀態列高度（避開系統狀態列）；
+    // 瀏覽器分頁維持預設 0。display-mode 媒體查詢涵蓋多數平台，
+    // navigator.standalone 補上較舊版 iOS Safari。
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (isStandalone) {
+      document.documentElement.style.setProperty(
+        '--safe-top',
+        'env(safe-area-inset-top)',
+      );
+    }
+
     setHeight();
 
     window.addEventListener('resize', setHeight);
