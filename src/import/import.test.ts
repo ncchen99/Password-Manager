@@ -348,3 +348,54 @@ describe('純位置序列與弱密碼（服務名↵ID↵密碼）', () => {
     expect(entry.credentials[0].note).toContain('黏誠');
   });
 });
+
+describe('同標頭下無標籤多組帳密（真實雜亂資料）', () => {
+  it('Gmail 標頭下多組 email↵密碼 → 逐組拆成多筆，共用服務名', () => {
+    const text = [
+      'Gmail',
+      'ncchen01@gmail.com',
+      'ewfewfwegvewrrew',
+      'ncchen02@gmail.com',
+      '!ewfewfwegvewrrew',
+      'ncchen04@gmail.com',
+      'ewfewfwegvewrrew',
+      'ncchen05@gmail.com',
+      'ewfewfwegvewrrew',
+      'ncchen06@gmail.com',
+      'O!ewfewfwegvewrrew',
+      'ncchen07@gmail.com',
+      'ewfewfwegvewrrew',
+    ].join('\n');
+    const cands = parseImport(text);
+    expect(cands).toHaveLength(6);
+    expect(cands.every((c) => c.fields.service === 'Gmail')).toBe(true);
+    expect(cands[1].fields.username).toBe('ncchen02@gmail.com');
+    expect(cands[1].fields.password).toBe('!ewfewfwegvewrrew');
+    expect(cands[4].fields.username).toBe('ncchen06@gmail.com');
+    expect(cands[4].fields.password).toBe('O!ewfewfwegvewrrew');
+  });
+
+  it('標頭下純帳號↵密碼（無 email）多組 → 逐組拆成多筆', () => {
+    const text = ['太空中心後臺', 'ncchen', 'nfergween11', 'admin6', '12341234'].join('\n');
+    const cands = parseImport(text);
+    expect(cands).toHaveLength(2);
+    expect(cands.every((c) => c.fields.service === '太空中心後臺')).toBe(true);
+    expect(cands[0].fields.username).toBe('ncchen');
+    expect(cands[0].fields.password).toBe('nfergween11');
+    expect(cands[1].fields.username).toBe('admin6');
+    expect(cands[1].fields.password).toBe('12341234');
+  });
+
+  it('兩行標頭（分類↵實際服務名）+ email/帳號/密碼 不誤拆成多筆，密碼挑最像密碼者', () => {
+    const text = ['太空中心', 'Git server', 'ncchen99@gmail.com', 'ncchen99', 'Spagwgr0eg17'].join(
+      '\n',
+    );
+    const cands = parseImport(text);
+    expect(cands).toHaveLength(1);
+    const [c] = cands;
+    expect(c.fields.service).toBe('太空中心 Git server');
+    expect(c.fields.username).toBe('ncchen99@gmail.com');
+    expect(c.fields.password).toBe('Spagwgr0eg17');
+    expect(c.fields.note).toContain('ncchen99');
+  });
+});

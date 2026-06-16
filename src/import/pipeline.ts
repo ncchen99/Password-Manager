@@ -10,7 +10,7 @@ import { newId } from '@/lib/id';
 import { normalize } from '@/search/normalize';
 import { canonicalServiceName } from '@/icons/match';
 import { canonicalize } from './canonicalize';
-import { segment, splitCredentials } from './segment';
+import { segment, splitCredentials, splitPlainPairs } from './segment';
 import { parseBlock } from './fsm';
 import { scoreCandidate } from './score';
 
@@ -27,8 +27,9 @@ export function parseImport(
   const dupIndex = buildDuplicateIndex(existing);
   const candidates: ImportCandidate[] = [];
 
-  // segment 切出每筆；splitCredentials 再把「同服務多組帳密」拆成各自一筆。
-  const blocks = segment(text).flatMap(splitCredentials);
+  // segment 切出每筆；splitCredentials 把「有標籤的同服務多組帳密」拆開；
+  // splitPlainPairs 再把「無標籤的同標頭多組帳密」（如多組 email↵密碼）拆開。
+  const blocks = segment(text).flatMap(splitCredentials).flatMap(splitPlainPairs);
   for (const block of blocks) {
     const { fields, confidence } = parseBlock(block);
     // 完全空白的區塊略過

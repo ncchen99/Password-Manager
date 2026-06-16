@@ -23,7 +23,8 @@ export function isUrl(s: string): boolean {
 
 export function isPhone(s: string): boolean {
   const t = s.trim();
-  return PHONE_RE.test(t) && (t.match(/\d/g)?.length ?? 0) >= 7;
+  // 門檻設 9 碼以上，避免把純數字密碼/PIN（如 8 碼）誤判成電話號碼。
+  return PHONE_RE.test(t) && (t.match(/\d/g)?.length ?? 0) >= 9;
 }
 
 export function isOtpAuth(s: string): boolean {

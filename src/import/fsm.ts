@@ -101,7 +101,7 @@ function isPlainValueLine(line: string): boolean {
 }
 
 /** 把區塊行序列整理成 rows，處理多種標籤格式 + 跨行配對。 */
-function toRows(lines: string[]): Row[] {
+export function toRows(lines: string[]): Row[] {
   const rows: Row[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -191,14 +191,26 @@ export function parseBlock(block: string): ParsedBlock {
     .filter(Boolean);
 
   // 服務標頭：區塊首個純值行，且形似服務名 → service。
+  // 若緊接著的行也是「含空白的片語」且形似服務名（如分類「太空中心」↵實際服務
+  // 「Git server」），視為標頭延續一併併入，避免被誤判成帳號/密碼候選。
   let startIdx = 0;
   if (fields.service === undefined && plain.length && isServiceHeader(plain[0])) {
-    set('service', stripTrailingColon(plain[0]), 0.6, '區塊首行，推測為服務名稱');
+    const headerParts = [stripTrailingColon(plain[0])];
     startIdx = 1;
+    while (
+      startIdx < plain.length &&
+      /\s/.test(plain[startIdx]) &&
+      isServiceHeader(plain[startIdx])
+    ) {
+      headerParts.push(stripTrailingColon(plain[startIdx]));
+      startIdx++;
+    }
+    set('service', headerParts.join(' '), 0.6, '區塊首（多）行，推測為服務名稱');
   }
 
-  const phones: string[] = [];
-  const leftover: string[] = [];
+  // 電話與其餘未分類值依「原始出現順序」放進同一個待處理佇列，避免電話
+  // （另外彙整、稍後處理）插隊搶走本該依序歸位的帳號／密碼。
+  const pending: { value: string; isPhone: boolean }[] = [];
   for (let k = startIdx; k < plain.length; k++) {
     const v = plain[k];
     if (isOtpAuth(v)) {
@@ -211,20 +223,48 @@ export function parseBlock(block: string): ParsedBlock {
     } else if (isBareTotpSecret(v)) {
       set('otp', v.replace(/\s/g, '').toUpperCase(), 0.6, 'base32 TOTP 種子');
     } else if (isPhone(v)) {
-      phones.push(v);
+      pending.push({ value: v, isPhone: true });
     } else {
-      leftover.push(v);
+      pending.push({ value: v, isPhone: false });
     }
   }
 
-  // 電話：尚無帳號 → 當作帳號；否則存為「電話」欄位（電話絕不當密碼）。
-  for (const p of phones) {
-    if (fields.username === undefined) set('username', p, 0.55, '電話號碼作為帳號');
-    else addCustom('電話', p);
+  // 帳號已由 email 確定時，剩餘的「非電話」值不再依出現順序硬塞密碼欄——
+  // 挑「最像密碼」的一個作為密碼，其餘進備註。避免「email↵帳號文字↵真正
+  // 密碼」這種三行區塊把不像密碼的帳號文字誤填進密碼欄、真正的密碼卻被
+  // 擠到備註。電話一律留給下方順序迴圈處理（電話絕不當密碼）。
+  if (fields.username !== undefined && fields.password === undefined) {
+    const plainPending = pending.filter((p) => !p.isPhone);
+    if (plainPending.length > 1) {
+      let best = plainPending[0];
+      let bestScore = -1;
+      for (const p of plainPending) {
+        const s = passwordLikeness(p.value).score;
+        if (s > bestScore) {
+          bestScore = s;
+          best = p;
+        }
+      }
+      set('password', best.value, Math.min(0.85, 0.4 + bestScore * 0.5), '剩餘值中最像密碼');
+      for (const p of plainPending) {
+        if (p !== best) noteParts.push(p.value);
+      }
+      for (let i = pending.length - 1; i >= 0; i--) {
+        if (!pending[i].isPhone) pending.splice(i, 1);
+      }
+    }
   }
 
-  // 其餘未分類值：明顯像密碼者優先填密碼，否則依序補 帳號 → 密碼 → 備註。
-  for (const v of leftover) {
+  // 依原始順序處理剩餘佇列：電話尚無帳號 → 當作帳號，否則存為「電話」欄位
+  // （電話絕不當密碼）；其餘未分類值：明顯像密碼者優先填密碼，否則依序補
+  // 帳號 → 密碼 → 備註。
+  for (const item of pending) {
+    if (item.isPhone) {
+      if (fields.username === undefined) set('username', item.value, 0.55, '電話號碼作為帳號');
+      else addCustom('電話', item.value);
+      continue;
+    }
+    const v = item.value;
     const pw = passwordLikeness(v);
     if (pw.score >= 0.6 && fields.password === undefined) {
       set('password', v, Math.min(0.85, 0.4 + pw.score * 0.5), pw.reasons.join('、'));

@@ -6,7 +6,8 @@
 import { toLines } from './canonicalize';
 import { splitLabeled } from './canonicalize';
 import { labelToField } from './labels';
-import { isUrl } from './tokens';
+import { toRows } from './fsm';
+import { isEmail, isOtpAuth, isPhone, isUrl } from './tokens';
 
 const HARD_DIVIDER = /^\s*(-{3,}|={3,}|\*{3,}|—{2,}|_{3,}|#{2,})\s*$/;
 
@@ -131,4 +132,47 @@ export function splitCredentials(block: string): string[] {
 
   if (groups.length <= 1) return [block];
   return groups.map((g) => [...header, ...g].join('\n'));
+}
+
+/** 一行是否「不像」帳號/密碼值本身（用於判斷是不是還在標頭階段）。 */
+function isHeaderLike(line: string): boolean {
+  return !isEmail(line) && !isUrl(line) && !isOtpAuth(line) && !isPhone(line);
+}
+
+/** 標頭延續行：第二行起，只有「含空白的片語」才視為標頭延續（如「Git server」），
+ *  避免把無空白的單字帳號（如「ncchen」）誤吃成標頭的一部分。 */
+function isHeaderContinuation(line: string): boolean {
+  return /\s/.test(line.trim()) && isHeaderLike(line);
+}
+
+/**
+ * 同一標頭下「無標籤」的多組帳密（如 Gmail 標頭下直接列出多組 email↵密碼，
+ * 或純帳號↵密碼，完全沒有任何標籤）：標頭之後若為偶數行、且全為無標籤值，
+ * 視為交替的帳號／密碼配對，逐對拆成多筆，標頭複製到每一筆。
+ *
+ * 只在「至少兩對」（4 行以上）時才拆，且每對的第二個值不能是 email（避免把
+ * 「服務名↵email↵密碼」這種單一筆三行區塊誤判成兩對）。
+ */
+export function splitPlainPairs(block: string): string[] {
+  const lines = toLines(block);
+  if (lines.length < 5) return [block];
+
+  let headerEnd = 1;
+  while (headerEnd < lines.length && isHeaderContinuation(lines[headerEnd])) headerEnd++;
+
+  const rest = lines.slice(headerEnd);
+  if (rest.length < 4 || rest.length % 2 !== 0) return [block];
+  // 任何一行帶有標籤（含「標籤獨佔一行、值在下一行」等啟發式格式）→ 此區塊
+  // 另有更精確的標籤化解析，不用「無標籤配對」猜測，避免誤拆。
+  if (toRows(lines).some((r) => r.label !== undefined || r.heuristicLabel !== undefined)) {
+    return [block];
+  }
+  if (rest.some((l) => isOtpAuth(l))) return [block];
+
+  const pairs: [string, string][] = [];
+  for (let i = 0; i < rest.length; i += 2) pairs.push([rest[i], rest[i + 1]]);
+  if (pairs.some(([, secret]) => isEmail(secret))) return [block];
+
+  const header = lines.slice(0, headerEnd);
+  return pairs.map(([id, secret]) => [...header, id, secret].join('\n'));
 }
