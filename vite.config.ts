@@ -23,11 +23,12 @@ export default defineConfig({
       // 會等待，由 UI 明確提示使用者後才接管（#11），降低 hosting/CDN 被入侵時
       // 惡意版本自動執行的風險。
       registerType: 'prompt',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png'],
       manifest: {
+        id: '/',
         name: 'SafeVault 密碼管理器',
         short_name: 'SafeVault',
-        description: '零知識、端對端加密的智慧密碼管理器',
+        description: '零知識、端對端加密的智慧密碼管理器，可離線使用並跨裝置安全同步。',
         theme_color: '#1c1917',
         background_color: '#1c1917',
         display: 'standalone',
